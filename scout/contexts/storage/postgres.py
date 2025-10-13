@@ -66,6 +66,44 @@ class PostgreSQLWrapper(BaseDBWrapper):
         conn.close()
         return df
 
+    def ensure_column_exists(self, table: str, column: str, datatype: str) -> None:
+        """
+        Add column to table if it doesn't already exist (idempotent).
+
+        Useful for schema migrations without dropping/recreating entire database.
+
+        Args:
+            table: Table name
+            column: Column name to add
+            datatype: PostgreSQL datatype (e.g., "VARCHAR(20)", "INTEGER", "TIMESTAMP")
+
+        Example:
+            >>> db.ensure_column_exists("listings", "status", "VARCHAR(20)")
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        # Check if column exists in table
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name=%s AND column_name=%s
+            """,
+            (table, column),
+        )
+
+        if cursor.fetchone() is None:
+            # Column doesn't exist, add it
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {datatype}")
+            conn.commit()
+            print(f"✓ Added column '{column}' ({datatype}) to table '{table}'")
+        else:
+            pass  # Column already exists, nothing to do
+
+        cursor.close()
+        conn.close()
+
     @staticmethod
     def _db_exists(config: DatabaseConfig) -> bool:
         """
