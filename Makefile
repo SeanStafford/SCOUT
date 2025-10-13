@@ -4,7 +4,7 @@
 
 PROJECT_NAME = scout
 PYTHON_VERSION = 3.9
-PYTHON_INTERPRETER = python
+PYTHON_INTERPRETER = python3
 PACKAGE_MANAGER = pip
 
 #################################################################################

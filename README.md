@@ -77,6 +77,10 @@ make install
 # Configure database (optional)
 # Copy .env.example to .env and customize
 cp .env.example .env
+
+# IMPORTANT: Set proper permissions on .env to protect credentials
+chmod 600 .env
+
 # Edit .env to set your PostgreSQL password and other settings
 ```
 
