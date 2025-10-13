@@ -108,10 +108,7 @@ class JobListingScraper(ABC):
         self.all_cached_ids = []
         self.cache_data = {}  # Stores status info for each URL
 
-        # Migrate old .txt cache to new .json format if needed
-        self._migrate_txt_cache_to_json()
-
-        # Load cache
+        # Load cache (creates from database if missing)
         self.import_ids_from_cache()
 
         self.fields = list(df2db_col_map.keys())
@@ -169,31 +166,6 @@ class JobListingScraper(ABC):
                 "attempts": 1
                 } for url in archived_urls }
         return cache_data
-    
-    def _migrate_txt_cache_to_json(self):
-        """Convert old .txt cache to new .json format (one-time migration)."""
-        txt_path = self.cache_path.replace('.json', '.txt')
-
-        cache_data = self._cache_from_archive()
-        # Only migrate if .txt exists and .json doesn't
-        if os.path.exists(txt_path) and not os.path.exists(self.cache_path):
-            with open(txt_path, 'r') as f:
-                urls_from_txt = [line.strip() for line in f if line.strip()]
-
-            archived_urls = self.load_archived_ids()
-            
-            for url in urls_from_txt:
-                if url not in archived_urls:
-                    cache_data[url] = {
-                        "status": "pending",
-                        "last_attempt": None,
-                        "attempts": 0
-                    }
-
-            with open(self.cache_path, 'w') as f:
-                json.dump(cache_data, f, indent=2)
-
-            print(f"✓ Migrated {len(urls_from_txt)} URLs from {txt_path} to {self.cache_path}")
 
     def import_ids_from_cache(self):
         """Load IDs from JSON cache file with status tracking."""
