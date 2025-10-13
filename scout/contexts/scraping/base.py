@@ -8,8 +8,10 @@ This module defines the abstract base classes and common functionality for all j
 """
 
 import os
+import json
 import time
 import requests
+from datetime import datetime
 
 import pandas as pd
 from tqdm import tqdm
@@ -91,6 +93,9 @@ class JobListingScraper(ABC):
         self.db_config = db_config or DatabaseConfig.from_env(name=database_name)
 
         assert cache_path is not None, "Cache path not provided."
+
+        # Ensure cache uses .json extension
+        assert cache_path.endswith('.json')
         self.cache_path = cache_path
 
         self.batch_delay = batch_delay
@@ -101,6 +106,12 @@ class JobListingScraper(ABC):
 
         self.failed_ids = []
         self.all_cached_ids = []
+        self.cache_data = {}  # Stores status info for each URL
+
+        # Migrate old .txt cache to new .json format if needed
+        self._migrate_txt_cache_to_json()
+
+        # Load cache
         self.import_ids_from_cache()
 
         self.fields = list(df2db_col_map.keys())
@@ -148,20 +159,63 @@ class JobListingScraper(ABC):
         new_ids = set(id_list) - set(self.all_cached_ids)
         self.all_cached_ids.extend(new_ids)
 
+    def _cache_from_archive(self):
+        archived_urls = self.load_archived_ids()
+        
+        
+        cache_data = { url: {
+                "status": "success",
+                "last_attempt": None,
+                "attempts": 1
+                } for url in archived_urls }
+        return cache_data
+    
+    def _migrate_txt_cache_to_json(self):
+        """Convert old .txt cache to new .json format (one-time migration)."""
+        txt_path = self.cache_path.replace('.json', '.txt')
+
+        cache_data = self._cache_from_archive()
+        # Only migrate if .txt exists and .json doesn't
+        if os.path.exists(txt_path) and not os.path.exists(self.cache_path):
+            with open(txt_path, 'r') as f:
+                urls_from_txt = [line.strip() for line in f if line.strip()]
+
+            archived_urls = self.load_archived_ids()
+            
+            for url in urls_from_txt:
+                if url not in archived_urls:
+                    cache_data[url] = {
+                        "status": "pending",
+                        "last_attempt": None,
+                        "attempts": 0
+                    }
+
+            with open(self.cache_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            print(f"✓ Migrated {len(urls_from_txt)} URLs from {txt_path} to {self.cache_path}")
+
     def import_ids_from_cache(self):
-        """Load IDs from cache file."""
+        """Load IDs from JSON cache file with status tracking."""
         if os.path.exists(self.cache_path):
             with open(self.cache_path, "r") as f:
-                cached_ids = [line.replace("\n", "") for line in f.readlines()]
-            self.keep_id_list_updated(cached_ids)
-        else:
-            cached_ids = []
-        return cached_ids
+                try:
+                    self.cache_data = json.load(f)
+                    # Extract all URLs regardless of status
+                    cached_ids = list(self.cache_data.keys())
+                    self.keep_id_list_updated(cached_ids)
+                    return
+                except json.JSONDecodeError:
+                    print(f"Cache file corrupted, refreshing cache from archive.")
+
+        self.cache_data = self._cache_from_archive()
+        cached_ids = list(self.cache_data.keys())
+        self.keep_id_list_updated(cached_ids)
 
     def export_ids_to_cache(self):
-        """Write all cached IDs to cache file."""
+        """Write all cached IDs to JSON cache file with status."""
         with open(self.cache_path, "w") as f:
-            f.write("\n".join(id for id in self.all_cached_ids))
+            json.dump(self.cache_data, f, indent=2)
 
     def load_archived_ids(self):
         """Load IDs already saved to database."""
@@ -179,13 +233,31 @@ class JobListingScraper(ABC):
         self.keep_id_list_updated(archived_ids)
         return archived_ids
 
-    def determine_ids_to_archive(self, candidate_ids: list) -> list:
-        """Get IDs that haven't been archived yet (excluding failed IDs)."""
+    def determine_ids_to_archive(self, candidate_ids: list, retry_failures: bool = False) -> list:
+        """
+        Get IDs that haven't been archived yet (excluding failed IDs unless retry_failures=True).
+
+        Args:
+            candidate_ids: List of IDs to consider
+            retry_failures: If True, include previously failed IDs; if False, skip them
+
+        Returns:
+            List of IDs to scrape
+        """
         archived_ids = set(self.load_archived_ids())
-        return list(set(candidate_ids) - archived_ids - set(self.failed_ids))
+
+        # Filter out previously failed IDs unless retrying
+        if retry_failures:
+             return list(set(candidate_ids) - archived_ids)
+        else:
+            failed_ids = [
+                url for url, data in self.cache_data.items()
+                if data["status"] == "failed"
+            ]
+            return list(set(candidate_ids) - archived_ids - set(self.failed_ids))
 
     @abstractmethod
-    def fetch_next_batch(self, batch_size: int) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures: bool) -> tuple[list, pd.DataFrame]:
         """
         Fetch next batch of listings.
 
@@ -193,14 +265,18 @@ class JobListingScraper(ABC):
         """
         pass
 
-    def propagate(self, batch_size: int = 10) -> pd.DataFrame:
+    def propagate(self, batch_size: int = 10, retry_failures: bool = False) -> pd.DataFrame:
         """
         Common orchestration logic for all scrapers.
         Fetches batches until all listings are scraped.
+
+        Args:
+            batch_size: Number of listings to scrape per batch
+            retry_failures: If True, retry previously failed URLs; if False, skip them
         """
         while not self.listing_scraping_completed:
             # Fetch next batch
-            scraped_ids, listing_batch_df = self.fetch_next_batch(batch_size)
+            scraped_ids, listing_batch_df = self.fetch_next_batch(batch_size, retry_failures=retry_failures)
 
             # Update cache with new IDs
             if scraped_ids:
@@ -275,6 +351,14 @@ class HTMLScraper(JobListingScraper):
                     url=listing_id, html_response=fetched_listing_webpage
                 )
                 scraped_info_list.append(scraped_info)
+
+                # Mark as successful in cache
+                self.cache_data[listing_id] = {
+                    "status": "success",
+                    "last_attempt": datetime.now().isoformat(),
+                    "attempts": self.cache_data.get(listing_id, {}).get("attempts", 0) + 1
+                }
+
                 time.sleep(self.request_delay)
 
             except Exception as e:
@@ -282,6 +366,15 @@ class HTMLScraper(JobListingScraper):
                     f"Failed to scrape {listing_id} after {self.max_retries} attempts: {e}"
                 )
                 self.failed_ids.append(listing_id)
+
+                # Mark as failed in cache
+                self.cache_data[listing_id] = {
+                    "status": "failed",
+                    "last_attempt": datetime.now().isoformat(),
+                    "attempts": self.cache_data.get(listing_id, {}).get("attempts", 0) + 1,
+                    "error": str(e)
+                }
+                self.export_ids_to_cache()  # Persist immediately
 
         if self.failed_ids:
             print(f"Failed to scrape {len(self.failed_ids)} listings")
@@ -321,7 +414,7 @@ class HTMLScraper(JobListingScraper):
         self.current_directory_page = page
         return scraped_ids
 
-    def fetch_next_batch(self, batch_size: int) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures: bool = False) -> tuple[list, pd.DataFrame]:
         """
         Implementation of abstract method for HTML scraping.
         Two-phase: first get IDs, then fetch details for unarchived ones.
@@ -334,7 +427,10 @@ class HTMLScraper(JobListingScraper):
             new_ids = []
 
         # Phase 2: Get unarchived IDs and fetch their details
-        ids_of_listings_to_fetch = self.determine_ids_to_archive(self.all_cached_ids)
+        ids_of_listings_to_fetch = self.determine_ids_to_archive(
+            self.all_cached_ids,
+            retry_failures=retry_failures
+        )
 
         if ids_of_listings_to_fetch:
             listings_df = self.scrape_next_listing_batch(ids_of_listings_to_fetch)
@@ -378,7 +474,7 @@ class APIScraper(JobListingScraper):
         """Fetch a batch of listings from the API."""
         pass
 
-    def fetch_next_batch(self, batch_size: int) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures:bool = False) -> tuple[list, pd.DataFrame]:
         """
         Implementation of abstract method for API scraping.
         Single-phase: API returns full listing data in one call.
@@ -398,7 +494,10 @@ class APIScraper(JobListingScraper):
                 return [], pd.DataFrame()
 
             # Filter to only unarchived listings
-            unarchived_ids = self.determine_ids_to_archive(fetched_ids)
+            unarchived_ids = self.determine_ids_to_archive(
+                fetched_ids,
+                retry_failures=retry_failures
+            )
             to_archive_mask = fetched_listings_df[self.id_col_name].isin(unarchived_ids)
             listings_to_archive_df = fetched_listings_df[to_archive_mask]
 
