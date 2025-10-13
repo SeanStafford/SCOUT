@@ -18,34 +18,13 @@ from abc import ABC, abstractmethod
 from sqlalchemy import create_engine
 from typing import List, Dict, Tuple
 
-from scout.contexts.storage.postgres import (
+from scout.contexts.storage import (
     db_exists,
     create_db,
     DatabaseWrapper,
-    POSTGRES_PASSWORD,
+    DatabaseConfig,
+    create_database_config,
 )
-
-
-@dataclass
-class ListingDatabaseConfig:
-    """Configuration for PostgreSQL database connection."""
-
-    host: str = "localhost"
-    port: str = "5432"
-    user: str = "postgres"
-    password: str = None
-    name: str = None
-    table: str = "listings"
-
-    def __post_init__(self):
-        if self.password is None:
-            raise ValueError("Database password required")
-        if self.name is None:
-            raise ValueError("Database name required")
-
-    @property
-    def connection_string(self):
-        return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
 
 def html_request_with_retry(url, method="GET", max_attempts=3, delay=1.0, **kwargs):
@@ -112,9 +91,7 @@ class JobListingScraper(ABC):
         max_retries=2,
         db_config=None,
     ):
-        self.db_config = db_config or ListingDatabaseConfig(
-            password=POSTGRES_PASSWORD, name=database_name
-        )
+        self.db_config = db_config or create_database_config(database_name=database_name)
 
         assert cache_path is not None, "Cache path not provided."
         self.cache_path = cache_path
