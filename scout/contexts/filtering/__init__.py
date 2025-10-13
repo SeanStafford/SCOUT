@@ -12,4 +12,6 @@ from scout.contexts.filtering.filters import (
 __all__ = [
     "check_active",
     "check_red_flags",
+    "check_clearance_req",
+    "check_title_red_flags",
 ]

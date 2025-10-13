@@ -1,8 +1,10 @@
+
 """
 Job listing filtering and analysis functions.
 Provides functions to filter job listings based on various criteria.
 """
 
+import re
 import time
 import requests
 import pandas as pd
@@ -59,4 +61,54 @@ def check_red_flags(red_flags: list, df: pd.DataFrame, description_column: str =
         no_red_flags.append(not is_red_flag)
 
     df["No_Red_Flags"] = no_red_flags
+    return df
+
+
+def check_clearance_req(
+    df: pd.DataFrame,
+    description_column: str = "Description",
+    start_delimiter: str = "You Have",
+    end_delimiter: str = "Nice If You Have",
+) -> pd.DataFrame:
+    """
+    Check if cearance is a required qualification (not robustly implemented yet)
+    """
+    clearance_required_list = []
+
+    for i, row in df.iterrows():
+        clearance_required = check_keyword_between_delimiters(
+            row[description_column],
+            "clearance",  # Case-insensitive search (regex uses re.IGNORECASE)
+            start_delimiter,
+            end_delimiter,
+        )
+        clearance_required_list.append(clearance_required)
+
+    df["Clearance Required"] = clearance_required_list
+    return df
+
+
+def check_title_red_flags(
+    red_flags: list,
+    df: pd.DataFrame,
+    title_column: str = "Job Title",
+) -> pd.DataFrame:
+    """
+    Check job titles for undesirable keywords.
+
+    Args:
+        red_flags: List of keywords to flag (e.g., ["Manager",])
+        df: DataFrame containing job listings
+        title_column: Name of column containing job titles (default: "Job Title")
+
+    Returns:
+        DataFrame with new "Title_OK" boolean column (True if no red flags found)
+    """
+    no_red_flags = []
+
+    for _, row in df.iterrows():
+        has_red_flag = any(flag in row[title_column] for flag in red_flags)
+        no_red_flags.append(not has_red_flag)
+
+    df["Title_OK"] = no_red_flags
     return df
