@@ -103,7 +103,7 @@ define PRINT_HELP_PYSCRIPT
 import re, sys; \
 lines = '\n'.join([line for line in sys.stdin]); \
 matches = re.findall(r'\n## (.*)\n[\s\S]+?\n([a-zA-Z_-]+):', lines); \
-print('SCOUT - Scraping Careers & Opportunities Using Technology\n'); \
+print('SCOUT - Scraping Career Opportunities Using Technology\n'); \
 print('Available commands:\n'); \
 print('\n'.join(['{:20}{}'.format(*reversed(match)) for match in matches]))
 endef

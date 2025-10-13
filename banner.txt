@@ -33,7 +33,7 @@
    █           ██   ███          ██       ██   ██       ██       ███       █    
    █   ██████████   ██████████   ███████████   ███████████       ███       █    
    █                                                                       █    
-   █    Scraping Careers & Opportunities Using Technology                  █    
+   █    Scraping Career Opportunities Using Technology                     █    
    █                                                              v0.1.0   █    
    █                                            created by Sean Stafford   █    
    █                                                                       █    

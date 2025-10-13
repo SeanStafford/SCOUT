@@ -5,7 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "scout"
 version = "0.1.0"
-description = "Scraping Careers & Opportunities Using Technology (SCOUT) - A job listing scraper system"
+description = "Scraping Career Opportunities Using Technology (SCOUT) - A job listing scraper system"
 authors = [
   { name = "Sean Stafford" },
 ]

@@ -35,7 +35,7 @@
    █           ██   ███          ██       ██   ██       ██       ███       █    
    █   ██████████   ██████████   ███████████   ███████████       ███       █    
    █                                                                       █    
-   █    Scraping Careers & Opportunities Using Technology                  █    
+   █    Scraping Career Opportunities Using Technology                     █    
    █                                                              v0.1.0   █    
    █                                            created by Sean Stafford   █    
    █                                                                       █    
@@ -43,7 +43,7 @@
 ```
 
 
-**Scraping Careers & Opportunities Using Technology**
+**Scraping Career Opportunities Using Technology**
 
 A job listing scraper system that collects job postings from various employers and stores them in PostgreSQL for analysis and filtering. SCOUT provides a flexible, extensible framework for scraping job listings from multiple career websites. It handles diverse website patterns—traditional HTML, pure APIs, and hybrid approaches—through a domain-driven architecture that makes it easy to add new job sites.
 
