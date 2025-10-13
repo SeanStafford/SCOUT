@@ -4,16 +4,27 @@ PostgreSQL-specific database operations for SCOUT.
 Provides PostgreSQL-specific utilities:
 - Database creation and existence checking
 - PostgreSQL implementation of DatabaseWrapper
-- Schema inspection via InformationSchema
+- PostgreSQL implementation of SchemaInspector
 """
 
 import psycopg2
 from psycopg2 import sql
-import numpy as np
 import pandas as pd
+from typing import List, Tuple
 
-from scout.contexts.storage.database import DatabaseWrapper as BaseDBWrapper
-from scout.contexts.storage.config import get_postgres_credentials
+from scout.contexts.storage.database import DatabaseWrapper as BaseDBWrapper, DatabaseConfig
+from scout.contexts.storage.schema import SchemaInspector
+
+
+def postgres_connect(config: DatabaseConfig, name: str = None, host: str = None, user: str = None, port: int = None, password: str = None):
+    """Create a new PostgreSQL database connection. Override config parameters if provided."""
+    return psycopg2.connect(
+        dbname=name if name is not None else config.name,
+        host=host if host is not None else config.host,
+        user=user if user is not None else config.user,
+        port=port if port is not None else config.port,
+        password=password if password is not None else config.password,
+    )
 
 
 class PostgreSQLWrapper(BaseDBWrapper):
@@ -23,32 +34,12 @@ class PostgreSQLWrapper(BaseDBWrapper):
     Provides connection management and common query patterns for PostgreSQL.
     """
 
-    def __init__(
-        self,
-        name: str,
-        host: str = None,
-        user: str = None,
-        port: int = None,
-        password: str = None,
-    ):
-        super().__init__(name)
-
-        # Get credentials from environment if not provided
-        creds = get_postgres_credentials()
-        self.host = host or creds["host"]
-        self.user = user or creds["user"]
-        self.port = port or creds["port"]
-        self.password = password or creds["password"]
+    def __init__(self, config: DatabaseConfig):
+        super().__init__(config)
 
     def connect(self):
         """Create a new PostgreSQL database connection."""
-        return psycopg2.connect(
-            dbname=self.name,
-            host=self.host,
-            user=self.user,
-            port=self.port,
-            password=self.password,
-        )
+        return postgres_connect(self.config)
 
     def _query(self, query):
         """Execute a query and return first column values."""
@@ -75,93 +66,53 @@ class PostgreSQLWrapper(BaseDBWrapper):
         conn.close()
         return df
 
+    @staticmethod
+    def _db_exists(config: DatabaseConfig) -> bool:
+        """
+        Check if a PostgreSQL database exists.
 
-def db_exists(name: str) -> bool:
+        Uses PostgreSQL system catalog pg_database.
+
+        Args:
+            config: DatabaseConfig with connection details
+
+        Returns:
+            True if database exists, False otherwise
+        """
+        conn = postgres_connect(config, name="postgres")
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (config.name,))
+        fetched = cursor.fetchone()
+        conn.close()
+        return fetched is not None
+
+    @staticmethod
+    def _create_db(config: DatabaseConfig) -> None:
+        """
+        Create a new PostgreSQL database (private helper).
+
+        Args:
+            config: DatabaseConfig with connection details and database name
+        """
+        conn = postgres_connect(config, name="postgres")
+        conn.autocommit = True
+        cursor = conn.cursor()
+
+        sql_cmd = f" CREATE database {config.name} "
+        cursor.execute(sql_cmd)
+        print(f"Database named '{config.name}' created successfully")
+        conn.close()
+
+
+class PostgreSQLSchemaInspector(SchemaInspector):
     """
-    Check if a PostgreSQL database exists.
+    PostgreSQL implementation of schema inspection.
 
-    Args:
-        name: Database name to check
-
-    Returns:
-        True if database exists, False otherwise
-    """
-    creds = get_postgres_credentials()
-    conn = psycopg2.connect(
-        database="postgres",
-        user=creds["user"],
-        password=creds["password"],
-        host=creds["host"],
-        port=creds["port"],
-    )
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (name,))
-    fetched = cursor.fetchone()
-    conn.close()
-    return fetched is not None
-
-
-def create_db(name: str) -> None:
-    """
-    Create a new PostgreSQL database.
-
-    Args:
-        name: Name of the database to create
-    """
-    creds = get_postgres_credentials()
-    conn = psycopg2.connect(
-        database="postgres",
-        user=creds["user"],
-        password=creds["password"],
-        host=creds["host"],
-        port=creds["port"],
-    )
-
-    conn.autocommit = True
-    cursor = conn.cursor()
-
-    sql_cmd = f" CREATE database {name} "
-    cursor.execute(sql_cmd)
-    print(f"Database named '{name}' created successfully")
-    conn.close()
-
-
-def draw_db_tree(tree, branch, last=True, header=""):
-    """
-    Recursively draw a tree visualization of database schema.
-
-    Adapted from: https://stackoverflow.com/a/76691030
-    """
-    elbow = "└── "
-    pipe = "│   "
-    tee = "├── "
-    blank = "    "
-    print(header + (elbow if last else tee) + branch)
-    assert type(tree) is np.ndarray
-    if tree.shape[1] > 0:
-        branches = np.unique(tree[:, 0])
-        for i, branch in enumerate(branches):
-            draw_db_tree(
-                tree[np.where(tree[:, 0] == branch)][:, 1:],
-                branch=branch,
-                header=header + (blank if last else pipe),
-                last=i == len(branches) - 1,
-            )
-
-
-class InformationSchema:
-    """
-    Utility for inspecting PostgreSQL database schema.
-
-    Provides methods to list tables, columns, and visualize schema structure.
+    Uses PostgreSQL's information_schema to query table and column metadata.
     """
 
-    def __init__(self, database: PostgreSQLWrapper, table: str = None):
-        self.database = database
-        self.table = table
-
-    def list_tables(self):
-        """List all tables in the database."""
+    def list_tables(self) -> List[str]:
+        """List all tables in the database using PostgreSQL information_schema."""
         conn = self.database.connect()
         cur = conn.cursor()
         cur.execute(
@@ -171,8 +122,8 @@ class InformationSchema:
         conn.close()
         return tables
 
-    def list_columns(self, table: str = None):
-        """List all columns in a specific table."""
+    def list_columns(self, table: str = None) -> Tuple[str, List[str]]:
+        """List all columns in a specific table using PostgreSQL information_schema."""
         tables = self.list_tables()
         if table is None:
             table = self.table
@@ -182,36 +133,9 @@ class InformationSchema:
         conn = self.database.connect()
         cur = conn.cursor()
         cur.execute(
-            f"SELECT column_name FROM information_schema.columns where table_name='{table}'"
+            f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}'"
         )
         columns = [column[0] for column in cur.fetchall()]
         conn.close()
         return table, columns
 
-    def tree(self, draw=True):
-        """
-        Generate a tree structure of database schema (tables and columns).
-
-        Args:
-            draw: If True, print the tree visualization. If False, just return data.
-
-        Returns:
-            List of [table, column] pairs
-        """
-        tree_out = []
-
-        tables = self.list_tables()
-        for table in tables:
-            _, cols = self.list_columns(table)
-            for col in cols:
-                tree_out.append([table, col])
-        if draw:
-            assert len(tables), (
-                "No tables exist. Cannot draw empty tree. Set draw=False to avoid this error."
-            )
-            draw_db_tree(np.array(tree_out), self.database.name)
-        return tree_out
-
-
-# Backward compatibility alias
-DatabaseWrapper = PostgreSQLWrapper

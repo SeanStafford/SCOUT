@@ -19,11 +19,8 @@ from sqlalchemy import create_engine
 from typing import List, Dict, Tuple
 
 from scout.contexts.storage import (
-    db_exists,
-    create_db,
-    DatabaseWrapper,
+    get_database_wrapper,
     DatabaseConfig,
-    create_database_config,
 )
 
 
@@ -74,7 +71,7 @@ class JobListingScraper(ABC):
     Abstract base class for all job listing scrapers.
 
     Provides common functionality:
-    - Database operations (read/write to PostgreSQL)
+    - Database operations (read/write to database)
     - Cache management (URL/ID persistence)
     - Progress tracking (failed IDs, completed status)
     - Orchestration (batch processing, retry logic)
@@ -91,7 +88,7 @@ class JobListingScraper(ABC):
         max_retries=2,
         db_config=None,
     ):
-        self.db_config = db_config or create_database_config(database_name=database_name)
+        self.db_config = db_config or DatabaseConfig.from_env(name=database_name)
 
         assert cache_path is not None, "Cache path not provided."
         self.cache_path = cache_path
@@ -116,14 +113,11 @@ class JobListingScraper(ABC):
 
         self.listing_scraping_completed = False
 
-        self.attach_db(self.db_config.name)
+        self.attach_db()
 
-    def attach_db(self, database_name):
-        """Attach to PostgreSQL database, creating if necessary."""
-        exists = db_exists(database_name)
-        if not exists:
-            create_db(database_name)
-        self.db = DatabaseWrapper(database_name)
+    def attach_db(self):
+        """Attach to database, creating if necessary."""
+        self.db = get_database_wrapper(self.db_config, ensure_exists=True)
 
     def append_df_to_db(self, df):
         """Append DataFrame to database table."""

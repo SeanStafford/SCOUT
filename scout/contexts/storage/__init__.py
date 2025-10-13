@@ -7,24 +7,27 @@ Public API exports only the interfaces needed by other contexts.
 Credentials and implementation details remain private.
 """
 
-from scout.contexts.storage.postgres import (
-    db_exists,
-    create_db,
-    DatabaseWrapper,
-    InformationSchema,
-)
-from scout.contexts.storage.config import (
+from scout.contexts.storage.database import (
     DatabaseConfig,
-    create_database_config,
+    DatabaseWrapper,
+)
+from scout.contexts.storage.schema import (
+    SchemaInspector,
+    draw_db_tree,
+)
+from scout.contexts.storage.getter import (
+    get_database_wrapper,
 )
 
 __all__ = [
-    # PostgreSQL operations
-    "db_exists",
-    "create_db",
+    # Factory function (primary interface)
+    "get_database_wrapper",
+    # Generic interfaces
     "DatabaseWrapper",
-    "InformationSchema",
-    # Configuration
     "DatabaseConfig",
-    "create_database_config",
+    "SchemaInspector",
+    # Utilities
+    "draw_db_tree",
 ]
+
+
