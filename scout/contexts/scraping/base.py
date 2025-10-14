@@ -3,7 +3,7 @@ Base classes for job listing scrapers.
 
 This module defines the abstract base classes and common functionality for all job scrapers:
 - JobListingScraper: Abstract base with orchestration, caching, and database operations
-- HTMLScraper: For sites requiring HTML parsing (two-phase: ID discovery → detail fetching)
+- HTMLScraper: For sites requiring HTML parsing (two-phase: URL discovery → detail fetching)
 - APIScraper: For API-based sites (single-phase: complete data in one call)
 """
 
@@ -24,6 +24,10 @@ from scout.contexts.storage import (
     get_database_wrapper,
     DatabaseConfig,
 )
+
+SUCCESS_STATUS = "success"
+FAILURE_STATUS = "failed"
+TEMP_STATUS = "pending"
 
 
 def html_request_with_retry(url, method="GET", max_attempts=3, delay=1.0, **kwargs):
@@ -74,8 +78,8 @@ class JobListingScraper(ABC):
 
     Provides common functionality:
     - Database operations (read/write to database)
-    - Cache management (URL/ID persistence)
-    - Progress tracking (failed IDs, completed status)
+    - Cache management
+    - Progress tracking
     - Orchestration (batch processing, retry logic)
     """
 
@@ -84,7 +88,7 @@ class JobListingScraper(ABC):
         df2db_col_map,
         cache_path=None,
         database_name=None,
-        id_column_name="url",
+        url_column_name="url",
         request_delay=1.0,
         batch_delay=2.0,
         max_retries=2,
@@ -92,36 +96,24 @@ class JobListingScraper(ABC):
     ):
         self.db_config = db_config or DatabaseConfig.from_env(name=database_name)
 
-        assert cache_path is not None, "Cache path not provided."
-
-        # Ensure cache uses .json extension
-        assert cache_path.endswith('.json')
-        self.cache_path = cache_path
-
         self.batch_delay = batch_delay
         self.max_retries = max_retries
         self.request_delay = request_delay
-        self.id_col_name = id_column_name
-        self.id_scraping_completed = False
-
-        self.failed_ids = []
-        self.all_cached_ids = []
-        self.cache_data = {}  # Stores status info for each URL
-
-        # Load cache (creates from database if missing)
-        self.import_ids_from_cache()
+        self.url_col_name = url_column_name
+        self.url_scraping_completed = False
+        self.listing_scraping_completed = False
 
         self.fields = list(df2db_col_map.keys())
         self.df2db_col_map = df2db_col_map
         self.db2df_col_map = {v: k for k, v in df2db_col_map.items()}
 
-        assert self.id_col_name in self.db2df_col_map.keys(), (
-            "The id we are use to track scraping progress (usually 'url') must be a column of the database"
+        assert self.url_col_name in self.db2df_col_map.keys(), (
+            "The id we are use to track scraping progress (assumed to be 'url') must be a column of the database"
         )
 
-        self.listing_scraping_completed = False
-
         self.attach_db()
+        self._load_cache(cache_path)
+
 
     def attach_db(self):
         """Attach to database, creating if necessary."""
@@ -151,89 +143,91 @@ class JobListingScraper(ABC):
         """
         return df
 
-    def keep_id_list_updated(self, id_list):
-        """Add new IDs to cached list (deduplication via set logic)."""
-        new_ids = set(id_list) - set(self.all_cached_ids)
-        self.all_cached_ids.extend(new_ids)
+    def _update_cache(self, new_data, data_directly_from_cache_file=False):
+        assert isinstance(new_data, dict), "New data must be a dict mapping URLs to status info"
+        self.cache.update(new_data)
+        if new_data and not data_directly_from_cache_file:
+            self.cache_is_updated = True
 
     def _cache_from_archive(self):
-        archived_urls = self.load_archived_ids()
+        archived_urls = self.get_archived_urls()
         
-        
-        cache_data = { url: {
-                "status": "success",
+        cache = { url: {
+                "status": SUCCESS_STATUS,
                 "last_attempt": None,
                 "attempts": 1
                 } for url in archived_urls }
-        return cache_data
+        return cache
+    
+    def _load_cache(self, cache_path):
+        assert cache_path is not None, "Cache path not provided."
+        self.cache_path = cache_path
 
-    def import_ids_from_cache(self):
-        """Load IDs from JSON cache file with status tracking."""
-        if os.path.exists(self.cache_path):
-            with open(self.cache_path, "r") as f:
+        self.cache = {}  # Stores status info for each URL
+        self.cache_is_updated = False
+
+        if os.path.exists(cache_path):
+            with open(cache_path, "r") as f:
                 try:
-                    self.cache_data = json.load(f)
-                    # Extract all URLs regardless of status
-                    cached_ids = list(self.cache_data.keys())
-                    self.keep_id_list_updated(cached_ids)
-                    return
+                    self._update_cache(json.load(f), data_directly_from_cache_file=True)
                 except json.JSONDecodeError:
-                    print(f"Cache file corrupted, refreshing cache from archive.")
+                    print(f"Could not import cache from {cache_path} due to JSONDecodeError, refreshing cache from archive.")
+        else:
+            print(f"{cache_path} does not exist, inferring cache from archive.")
+        
+        cache_inferred_from_archive = self._cache_from_archive()
 
-        self.cache_data = self._cache_from_archive()
-        cached_ids = list(self.cache_data.keys())
-        self.keep_id_list_updated(cached_ids)
+        # archive is the authority on success status
+        self._update_cache({ url: data for url, data in cache_inferred_from_archive.items() if not (url in self.cache.keys() and self.cache[url]["status"] == SUCCESS_STATUS) })     
 
-    def export_ids_to_cache(self):
-        """Write all cached IDs to JSON cache file with status."""
+    def _export_cache(self):
+        """Write complete cache to JSON cache file with status."""
         with open(self.cache_path, "w") as f:
-            json.dump(self.cache_data, f, indent=2)
+            json.dump(self.cache, f, indent=2)
+        self.cache_is_updated = False
+    
+    def print_cache_summary(self):
+        statuses = [SUCCESS_STATUS, FAILURE_STATUS, TEMP_STATUS]
+        status_counts = {status: 0 for status in statuses}
+        for data in self.cache.values():
+            status_counts[data["status"]] += 1
+        print(" | ".join([f"{status}: {count}" for status, count in status_counts.items()]))
 
-    def load_archived_ids(self):
-        """Load IDs already saved to database."""
+    def get_archived_urls(self):
+        """Get list of URLS already successfully archived to database."""
         try:
-            archived_ids = self.db.get_column_values(
-                column_name=self.id_col_name, table_name=self.db_config.table
+            archived_urls = self.db.get_column_values(
+                column_name=self.url_col_name, table_name=self.db_config.table
             )
         except Exception as e:
             print(
                 f"Error while attempting to load listings archive:\n{e}\n\nNo listings can be detected. Starting over from scratch."
             )
-            archived_ids = []
+            archived_urls = []
 
-        print(f"Archived listings so far: {len(archived_ids)}")
-        self.keep_id_list_updated(archived_ids)
-        return archived_ids
+        return archived_urls
 
-    def determine_ids_to_archive(self, candidate_ids: list, retry_failures: bool = False) -> list:
-        """
-        Get IDs that haven't been archived yet (excluding failed IDs unless retry_failures=True).
+    def _pick_urls_to_fetch(self, new_urls: list, retry_failures: bool = False) -> list:
 
-        Args:
-            candidate_ids: List of IDs to consider
-            retry_failures: If True, include previously failed IDs; if False, skip them
+        self._update_cache({ url: {
+                "status": TEMP_STATUS,
+                "last_attempt": None,
+                "attempts": 0
+                } for url in new_urls if url not in self.cache.keys() })
 
-        Returns:
-            List of IDs to scrape
-        """
-        archived_ids = set(self.load_archived_ids())
-
-        # Filter out previously failed IDs unless retrying
+        STATUS_LIST_TO_FETCH = [TEMP_STATUS]
         if retry_failures:
-             return list(set(candidate_ids) - archived_ids)
-        else:
-            failed_ids = [
-                url for url, data in self.cache_data.items()
-                if data["status"] == "failed"
-            ]
-            return list(set(candidate_ids) - archived_ids - set(self.failed_ids))
+            STATUS_LIST_TO_FETCH.append(FAILURE_STATUS)
+        
+        return [url for url, data in self.cache.items()
+                if data["status"] in STATUS_LIST_TO_FETCH]
 
     @abstractmethod
     def fetch_next_batch(self, batch_size: int, retry_failures: bool) -> tuple[list, pd.DataFrame]:
         """
         Fetch next batch of listings.
 
-        Returns: (list of IDs, DataFrame of listings to archive)
+        Returns: (list of URLs, DataFrame of listings to archive)
         """
         pass
 
@@ -248,23 +242,22 @@ class JobListingScraper(ABC):
         """
         while not self.listing_scraping_completed:
             # Fetch next batch
-            scraped_ids, listing_batch_df = self.fetch_next_batch(batch_size, retry_failures=retry_failures)
-
-            # Update cache with new IDs
-            if scraped_ids:
-                self.keep_id_list_updated(scraped_ids)
-                self.export_ids_to_cache()
+            scraped_urls, listing_batch_df = self.fetch_next_batch(batch_size, retry_failures=retry_failures)
 
             # Archive new listings
             if len(listing_batch_df) > 0:
                 self.append_df_to_db(listing_batch_df)
 
             # Check if we're done
-            if not scraped_ids:
-                archived_ids = set(self.load_archived_ids())
-                if set(archived_ids) | set(self.failed_ids) == set(self.all_cached_ids):
+            if not scraped_urls:
+                pending_urls = [url for url, data in self.cache.items() if data["status"] == TEMP_STATUS]
+
+                if  not pending_urls:
                     self.listing_scraping_completed = True
                     break
+
+            if self.cache_is_updated:
+                self._export_cache()
 
             # Be polite to the server
             time.sleep(self.batch_delay)
@@ -275,7 +268,7 @@ class HTMLScraper(JobListingScraper):
     Base class for websites requiring HTML parsing.
 
     Uses two-phase approach:
-    1. Directory scan: Paginate through listing pages to discover job IDs/URLs
+    1. Directory scan: Paginate through listing pages to discover job URLs
     2. Detail fetch: Retrieve and parse individual job pages
     """
 
@@ -295,8 +288,8 @@ class HTMLScraper(JobListingScraper):
         )
 
     @abstractmethod
-    def scrape_ids_by_directory_page(self, page) -> list:
-        """Fetch job IDs/URLs from a single directory page."""
+    def scrape_urls_by_directory_page(self, page) -> list:
+        """Fetch job URLs from a single directory page."""
         pass
 
     @abstractmethod
@@ -304,113 +297,110 @@ class HTMLScraper(JobListingScraper):
         """Extract job details from individual job page."""
         pass
 
-    def scrape_next_listing_batch(self, ids) -> pd.DataFrame:
+    def scrape_next_listing_batch(self, urls) -> pd.DataFrame:
         """Fetch and parse multiple job listing pages."""
+        temp_cache = {}
         scraped_info_list = []
 
-        for listing_id in tqdm(ids):
+        for listing_url in tqdm(urls):
             try:
                 fetched_listing_webpage = html_request_with_retry(
-                    url=listing_id,
+                    url=listing_url,
                     delay=self.request_delay,
                     max_attempts=self.max_retries,
                 )
-                assert fetched_listing_webpage.url == listing_id, (
-                    f"{listing_id} redirected to {fetched_listing_webpage.url} likely because the listing is no longer available"
+                assert fetched_listing_webpage.url == listing_url, (
+                    f"{listing_url} redirected to {fetched_listing_webpage.url} likely because the listing is no longer available"
                 )
 
                 scraped_info = self.parse_listing_webpage(
-                    url=listing_id, html_response=fetched_listing_webpage
+                    url=listing_url, html_response=fetched_listing_webpage
                 )
                 scraped_info_list.append(scraped_info)
 
                 # Mark as successful in cache
-                self.cache_data[listing_id] = {
-                    "status": "success",
+                temp_cache[listing_url] = {
+                    "status": SUCCESS_STATUS,
                     "last_attempt": datetime.now().isoformat(),
-                    "attempts": self.cache_data.get(listing_id, {}).get("attempts", 0) + 1
+                    "attempts": self.cache[listing_url]["attempts"] + 1
                 }
 
                 time.sleep(self.request_delay)
 
             except Exception as e:
                 print(
-                    f"Failed to scrape {listing_id} after {self.max_retries} attempts: {e}"
+                    f"Failed to scrape {listing_url} after {self.max_retries} attempts: {e}"
                 )
-                self.failed_ids.append(listing_id)
 
                 # Mark as failed in cache
-                self.cache_data[listing_id] = {
-                    "status": "failed",
+                temp_cache[listing_url] = {
+                    "status": FAILURE_STATUS,
                     "last_attempt": datetime.now().isoformat(),
-                    "attempts": self.cache_data.get(listing_id, {}).get("attempts", 0) + 1,
+                    "attempts": self.cache[listing_url]["attempts"] + 1,
                     "error": str(e)
                 }
-                self.export_ids_to_cache()  # Persist immediately
-
-        if self.failed_ids:
-            print(f"Failed to scrape {len(self.failed_ids)} listings")
+        
+        self._update_cache(temp_cache)
 
         if len(scraped_info_list):
             return self.postprocess_df(pd.DataFrame(scraped_info_list))
         else:
             return pd.DataFrame()
 
-    def scrape_next_id_batch(self, pages_per_batch: int) -> list:
-        """Scrape IDs from multiple directory pages."""
+    def scrape_next_url_batch(self, pages_per_batch: int) -> list:
+        """Scrape URLs from multiple directory pages."""
         assert pages_per_batch > 0, (
             "Wot in tarnation! Your pages_per_batch is not a positive number!"
         )
 
-        page = self.current_directory_page
-        page_end = page + pages_per_batch
+        page_start = self.current_directory_page
+        page_end = page_start + pages_per_batch
 
-        scraped_ids = []
-        while True:
-            if page >= page_end:
+        scraped_urls = []
+        for page in range(page_start, page_end):
+            page_i_urls = self.scrape_urls_by_directory_page(page)
+            n_urls_added = len(page_i_urls)
+            print(f"Found {n_urls_added} jobs on page {page} of directory.")
+            if not n_urls_added:
+                self.url_scraping_completed = True
                 break
 
-            page_i_ids = self.scrape_ids_by_directory_page(page)
-            n_ids_added = len(page_i_ids)
-            print(f"Found {n_ids_added} jobs on page {page}.")
-            if not n_ids_added:
-                self.id_scraping_completed = True
-                break
-
-            scraped_ids += page_i_ids
-            page += 1
+            scraped_urls += page_i_urls
             time.sleep(self.request_delay)
 
         if pages_per_batch > 1:
-            print(f"--------------------\nListing id count: {len(scraped_ids)}")
-        self.current_directory_page = page
-        return scraped_ids
+            print(f"--------------------\nTotal URLs in this batch: {len(scraped_urls)}")
+        self.current_directory_page = page + 1
+        return scraped_urls
 
     def fetch_next_batch(self, batch_size: int, retry_failures: bool = False) -> tuple[list, pd.DataFrame]:
         """
         Implementation of abstract method for HTML scraping.
-        Two-phase: first get IDs, then fetch details for unarchived ones.
+        Two-phase: first get URLs, then fetch details for unarchived ones.
         """
 
-        # Phase 1: Get new IDs if we haven't finished scanning directory
-        if not self.id_scraping_completed:
-            new_ids = self.scrape_next_id_batch(pages_per_batch=batch_size)
+        # Phase 1: Get new URLs if we haven't finished scanning directory
+        if not self.url_scraping_completed:
+            new_urls = self.scrape_next_url_batch(pages_per_batch=batch_size)
         else:
-            new_ids = []
+            new_urls = []
 
-        # Phase 2: Get unarchived IDs and fetch their details
-        ids_of_listings_to_fetch = self.determine_ids_to_archive(
-            self.all_cached_ids,
+        # Phase 2: Get unarchived URLs and fetch their details
+        urls_of_listings_to_fetch = self._pick_urls_to_fetch(
+            new_urls,
             retry_failures=retry_failures
         )
+        
+        if self.cache_is_updated:
+            self._export_cache()
 
-        if ids_of_listings_to_fetch:
-            listings_df = self.scrape_next_listing_batch(ids_of_listings_to_fetch)
+        if urls_of_listings_to_fetch:
+            listings_df = self.scrape_next_listing_batch(urls_of_listings_to_fetch)
         else:
             listings_df = pd.DataFrame()
 
-        print(f"Fetched {len(new_ids)} new IDs, {len(listings_df)} listings to archive")
-        return new_ids, listings_df
+        print(f"Found {len(new_urls)} URLs, attempted to fetch {len(urls_of_listings_to_fetch)} of them, resulting in {len(listings_df)} listings to archive")
+        return new_urls, listings_df
 
 
 class APIScraper(JobListingScraper):
@@ -454,31 +444,30 @@ class APIScraper(JobListingScraper):
         listing_index = self.batch_current * batch_size
 
         try:
-            # Fetch data from API with retry
             fetched_data = self.fetch_next_listing_batch(
                 listing_index=listing_index, n_listings=batch_size
             )
 
             # Parse the response
-            fetched_ids, fetched_listings_df = self.parse_api_response(fetched_data)
+            fetched_urls, fetched_listings_df = self.parse_api_response(fetched_data)
 
-            if not len(fetched_ids):
+            if not len(fetched_urls):
                 return [], pd.DataFrame()
 
             # Filter to only unarchived listings
-            unarchived_ids = self.determine_ids_to_archive(
-                fetched_ids,
+            unarchived_urls = self._pick_urls_to_fetch(
+                fetched_urls,
                 retry_failures=retry_failures
             )
-            to_archive_mask = fetched_listings_df[self.id_col_name].isin(unarchived_ids)
+            to_archive_mask = fetched_listings_df[self.url_col_name].isin(unarchived_urls)
             listings_to_archive_df = fetched_listings_df[to_archive_mask]
 
             print(
-                f"Fetched {len(fetched_ids)} listings, {len(listings_to_archive_df)} to archive"
+                f"Fetched {len(fetched_urls)} listings, {len(listings_to_archive_df)} to archive"
             )
 
             self.batch_current += 1
-            return fetched_ids, self.postprocess_df(listings_to_archive_df)
+            return fetched_urls, self.postprocess_df(listings_to_archive_df)
 
         except Exception as e:
             print(f"Failed to fetch batch at index {listing_index}: {e}")
