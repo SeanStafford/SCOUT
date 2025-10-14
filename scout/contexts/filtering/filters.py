@@ -1,4 +1,3 @@
-
 """
 Job listing filtering and analysis functions.
 Provides functions to filter job listings based on various criteria.
@@ -57,6 +56,8 @@ def check_column_red_flags(
     Returns:
         DataFrame with new boolean column (True if no red flags found)
     """
+    # Work with a copy to avoid SettingWithCopyWarning
+    df = df.copy()
 
     if output_column is None:
         # Sanitize column name for output (remove spaces, special chars)
