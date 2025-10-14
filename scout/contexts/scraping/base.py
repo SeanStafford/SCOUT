@@ -442,45 +442,65 @@ class APIScraper(JobListingScraper):
         Single-phase: API returns full listing data in one call.
         """
         listing_index = self.batch_current * batch_size
+        fetched_urls = []
 
         try:
             fetched_data = self.fetch_next_listing_batch(
                 listing_index=listing_index, n_listings=batch_size
             )
 
-            # Parse the response
+            # Initialize before parsing (needed for exception handler scope)
+            fetched_urls = []
             fetched_urls, fetched_listings_df = self.parse_api_response(fetched_data)
-
-            if not len(fetched_urls):
-                return [], pd.DataFrame()
-
-            # Filter to only unarchived listings
-            unarchived_urls = self._pick_urls_to_fetch(
-                fetched_urls,
-                retry_failures=retry_failures
-            )
-            to_archive_mask = fetched_listings_df[self.url_col_name].isin(unarchived_urls)
-            listings_to_archive_df = fetched_listings_df[to_archive_mask]
-
-            # Mark successfully fetched URLs as success
-            temp_cache = {
-                url: {
-                    "status": SUCCESS_STATUS,
-                    "last_attempt": datetime.now().isoformat(),
-                    "attempts": self.cache[url]["attempts"] + 1
-                }
-                for url in unarchived_urls
-            }
-            self._update_cache(temp_cache)
-
-            print(
-                f"Fetched {len(fetched_urls)} listings, {len(listings_to_archive_df)} to archive"
-            )
-
-            self.batch_current += 1
-            return fetched_urls, self.postprocess_df(listings_to_archive_df)
 
         except Exception as e:
             print(f"Failed to fetch batch at index {listing_index}: {e}")
+
+            # Mark URLs from failed batch as failed (if we got them before error)
+            if fetched_urls:
+                temp_cache = {
+                    url: {
+                        "status": FAILURE_STATUS,
+                        "last_attempt": datetime.now().isoformat(),
+                        "attempts": self.cache.get(url, {}).get("attempts", 0) + 1,
+                        "error": str(e)
+                    }
+                    for url in fetched_urls if url in self.cache
+                }
+                self._update_cache(temp_cache)
+
             self.batch_current += 1
             return [], pd.DataFrame()
+    
+        # Parse the response
+        fetched_urls, fetched_listings_df = self.parse_api_response(fetched_data)
+
+        if not len(fetched_urls):
+            return [], pd.DataFrame()
+
+        # Filter to only unarchived listings
+        unarchived_urls = self._pick_urls_to_fetch(
+            fetched_urls,
+            retry_failures=retry_failures
+        )
+        to_archive_mask = fetched_listings_df[self.url_col_name].isin(unarchived_urls)
+        listings_to_archive_df = fetched_listings_df[to_archive_mask]
+
+        # Mark successfully fetched URLs as success
+        temp_cache = {
+            url: {
+                "status": SUCCESS_STATUS,
+                "last_attempt": datetime.now().isoformat(),
+                "attempts": self.cache[url]["attempts"] + 1
+            }
+            for url in unarchived_urls
+        }
+        self._update_cache(temp_cache)
+
+        print(
+            f"Fetched {len(fetched_urls)} listings, {len(listings_to_archive_df)} to archive"
+        )
+
+        self.batch_current += 1
+        return fetched_urls, self.postprocess_df(listings_to_archive_df)
+
