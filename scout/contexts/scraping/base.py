@@ -462,6 +462,17 @@ class APIScraper(JobListingScraper):
             to_archive_mask = fetched_listings_df[self.url_col_name].isin(unarchived_urls)
             listings_to_archive_df = fetched_listings_df[to_archive_mask]
 
+            # Mark successfully fetched URLs as success
+            temp_cache = {
+                url: {
+                    "status": SUCCESS_STATUS,
+                    "last_attempt": datetime.now().isoformat(),
+                    "attempts": self.cache[url]["attempts"] + 1
+                }
+                for url in unarchived_urls
+            }
+            self._update_cache(temp_cache)
+
             print(
                 f"Fetched {len(fetched_urls)} listings, {len(listings_to_archive_df)} to archive"
             )
