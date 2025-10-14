@@ -37,6 +37,7 @@ dependencies = [
     # Utilities
     "tqdm>=4.65.0",
     "python-dotenv>=1.0.0",
+    "omegaconf>=2.3.0",
 ]
 
 [project.optional-dependencies]
