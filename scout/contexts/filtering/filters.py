@@ -39,29 +39,60 @@ def check_active(df: pd.DataFrame, url_column: str = "url") -> pd.DataFrame:
     return df
 
 
-def check_red_flags(red_flags: list, df: pd.DataFrame, description_column: str = "Description") -> pd.DataFrame:
+def check_column_red_flags(
+    df: pd.DataFrame,
+    red_flags: list,
+    column: str,
+    output_column: str = None
+) -> pd.DataFrame:
     """
-    Check job descriptions for undesireable keywords.
+    Check any column for undesirable keywords (generic red flag filter).
 
     Args:
         df: DataFrame containing job listings
+        red_flags: List of keywords to flag (e.g., ["Manager",])
+        column: Name of column to check for red flags (e.g., "Job Title")
+        output_column: Name of output boolean column (default: "{column}_OK")
+
+    Returns:
+        DataFrame with new boolean column (True if no red flags found)
+    """
+
+    if output_column is None:
+        # Sanitize column name for output (remove spaces, special chars)
+        sanitized_column = column.replace(" ", "_").replace("-", "_")
+        output_column = f"{sanitized_column}_OK"
+
+    red_flag_bool_col = []
+
+    for _, row in df.iterrows():
+        has_red_flag = any(flag in row[column] for flag in red_flags)
+        red_flag_bool_col.append(not has_red_flag)
+
+    df[output_column] = red_flag_bool_col
+    return df
+
+
+def check_red_flags(df: pd.DataFrame, red_flags: list, description_column: str = "Description") -> pd.DataFrame:
+    """
+    Check job descriptions for undesireable keywords.
+
+    DEPRECATED: Use check_column_red_flags() instead for more flexibility.
+
+    Args:
+        df: DataFrame containing job listings
+        red_flags: List of keywords to flag
         description_column: Name of column containing job descriptions (default: "Description")
 
     Returns:
-        DataFrame with new "No_Red_Flags" boolean column (True if no red flag keywords found)
+        DataFrame with new boolean column (True if no red flag keywords found)
     """
-    no_red_flags = []
-
-    for _, row in df.iterrows():
-        is_red_flag = False
-        for red_flag_kw in red_flags:
-            if red_flag_kw in row[description_column]:
-                is_red_flag = True
-                break
-        no_red_flags.append(not is_red_flag)
-
-    df["No_Red_Flags"] = no_red_flags
-    return df
+    return check_column_red_flags(
+        df,
+        red_flags=red_flags,
+        column=description_column,
+        output_column="Description_OK"
+    )
 
 
 def check_clearance_req(
@@ -89,12 +120,14 @@ def check_clearance_req(
 
 
 def check_title_red_flags(
-    red_flags: list,
     df: pd.DataFrame,
+    red_flags: list,
     title_column: str = "Job Title",
 ) -> pd.DataFrame:
     """
     Check job titles for undesirable keywords.
+
+    DEPRECATED: Use check_column_red_flags() instead for more flexibility.
 
     Args:
         red_flags: List of keywords to flag (e.g., ["Manager",])
@@ -104,11 +137,9 @@ def check_title_red_flags(
     Returns:
         DataFrame with new "Title_OK" boolean column (True if no red flags found)
     """
-    no_red_flags = []
-
-    for _, row in df.iterrows():
-        has_red_flag = any(flag in row[title_column] for flag in red_flags)
-        no_red_flags.append(not has_red_flag)
-
-    df["Title_OK"] = no_red_flags
-    return df
+    return check_column_red_flags(
+        df,
+        red_flags=red_flags,
+        column=title_column,
+        output_column="Title_OK"
+    )

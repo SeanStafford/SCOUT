@@ -1,0 +1,41 @@
+# SCOUT Job Filtering Configuration
+#
+# This file defines all filtering criteria for job listings.
+# Filters are applied in sequence: SQL filters (fast) -> keyword filters -> red flags -> clearance -> active check
+
+# SQL-based filters (run database-side for efficiency)
+sql_filters:
+  min_salary: 200000              # Minimum max_salary (0 means unspecified, no salary filtering)
+  max_age_days: 7                 # Maximum days since posting  (0 means unspecified, no age filtering)
+  onsite_locations:               # Locations to include
+    - "MD"
+  hybrid_locations:               # Locations to include for hybrid jobs
+    - "DC"
+    - "VA"
+  remote: true                    # Include remote positions
+
+# Keyword filtering (must contain at least one)
+keyword_filters:
+  required_keywords:
+    - "machine learning"
+  description_column: "Description"
+
+# red flags (exclude if any found)
+red_flags:
+  - 1: 
+    column: "Description"
+    bool_out_column: "No_Corporate_Buzzwords"
+    flags:
+      - "like a family"
+      - "synergy"
+
+  - 2:
+    column: "Job Title"
+    bool_out_column: "Not_a_Manager"
+    flags:
+      - "Manager"
+
+# Active URL check (slow - makes HTTP request for each job)
+active_check:
+  enabled: false                  # Disable by default due to performance
+  url_column: "url"
