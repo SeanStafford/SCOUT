@@ -25,6 +25,10 @@ from scout.contexts.storage import (
     DatabaseConfig,
 )
 
+# Cache status constants defining the URL lifecycle:
+# TEMP_STATUS: URL discovered but not yet scraped
+# SUCCESS_STATUS: Successfully fetched and archived to database
+# FAILURE_STATUS: Failed after all retry attempts
 SUCCESS_STATUS = "success"
 FAILURE_STATUS = "failed"
 TEMP_STATUS = "pending"
@@ -144,14 +148,26 @@ class JobListingScraper(ABC):
         return df
 
     def _update_cache(self, new_data, data_directly_from_cache_file=False):
+        """
+        Merge new status data into cache and mark for export.
+
+        The cache_is_updated flag enables lazy cache export - we only write to disk
+        when necessary, not after every status change.
+        """
         assert isinstance(new_data, dict), "New data must be a dict mapping URLs to status info"
         self.cache.update(new_data)
         if new_data and not data_directly_from_cache_file:
             self.cache_is_updated = True
 
     def _cache_from_archive(self):
+        """
+        Build cache from database URLs, marking all as SUCCESS_STATUS.
+
+        This establishes archive as the source of truth - if it's in the database,
+        it was successfully scraped regardless of what the cache file says.
+        """
         archived_urls = self.get_archived_urls()
-        
+
         cache = { url: {
                 "status": SUCCESS_STATUS,
                 "last_attempt": None,
@@ -177,7 +193,9 @@ class JobListingScraper(ABC):
         
         cache_inferred_from_archive = self._cache_from_archive()
 
-        # archive is the authority on success status
+        # Merge archive truth with cached failures/pending:
+        # - If URL is in archive, mark as SUCCESS (overrides stale failed/pending)
+        # - If URL is in cache but not archive, preserve its status (failed/pending)
         self._update_cache({ url: data for url, data in cache_inferred_from_archive.items() if not (url in self.cache.keys() and self.cache[url]["status"] == SUCCESS_STATUS) })     
 
     def _export_cache(self):
@@ -207,18 +225,26 @@ class JobListingScraper(ABC):
 
         return archived_urls
 
-    def _pick_urls_to_fetch(self, new_urls: list, retry_failures: bool = False) -> list:
+    def _pick_urls_to_archive(self, new_urls: list, retry_failures: bool = False) -> list:
+        """
+        Determine which URLs should be scraped in this batch.
 
+        Assigns TEMP_STATUS to newly discovered URLs (eager status assignment).
+        Returns all TEMP_STATUS URLs, plus FAILURE_STATUS if retry_failures=True.
+        This ensures every URL has a status before scraping attempts.
+        """
+        # Assign pending status to new URLs
         self._update_cache({ url: {
                 "status": TEMP_STATUS,
                 "last_attempt": None,
                 "attempts": 0
                 } for url in new_urls if url not in self.cache.keys() })
 
+        # Build list of statuses to fetch
         STATUS_LIST_TO_FETCH = [TEMP_STATUS]
         if retry_failures:
             STATUS_LIST_TO_FETCH.append(FAILURE_STATUS)
-        
+
         return [url for url, data in self.cache.items()
                 if data["status"] in STATUS_LIST_TO_FETCH]
 
@@ -248,7 +274,8 @@ class JobListingScraper(ABC):
             if len(listing_batch_df) > 0:
                 self.append_df_to_db(listing_batch_df)
 
-            # Check if we're done
+            # Check if we're done: completion when no pending URLs remain
+            # (success + failed URLs are terminal states)
             if not scraped_urls:
                 pending_urls = [url for url, data in self.cache.items() if data["status"] == TEMP_STATUS]
 
@@ -256,6 +283,7 @@ class JobListingScraper(ABC):
                     self.listing_scraping_completed = True
                     break
 
+            # Lazy export: only write to disk when cache has changed
             if self.cache_is_updated:
                 self._export_cache()
 
@@ -309,6 +337,7 @@ class HTMLScraper(JobListingScraper):
                     delay=self.request_delay,
                     max_attempts=self.max_retries,
                 )
+                # Detect redirects (usually indicates removed/expired listings)
                 assert fetched_listing_webpage.url == listing_url, (
                     f"{listing_url} redirected to {fetched_listing_webpage.url} likely because the listing is no longer available"
                 )
@@ -339,7 +368,8 @@ class HTMLScraper(JobListingScraper):
                     "attempts": self.cache[listing_url]["attempts"] + 1,
                     "error": str(e)
                 }
-        
+
+        # Batch update cache after all scraping attempts (reduces I/O)
         self._update_cache(temp_cache)
 
         if len(scraped_info_list):
@@ -361,6 +391,7 @@ class HTMLScraper(JobListingScraper):
             page_i_urls = self.scrape_urls_by_directory_page(page)
             n_urls_added = len(page_i_urls)
             print(f"Found {n_urls_added} jobs on page {page} of directory.")
+            # Empty page indicates end of directory listing
             if not n_urls_added:
                 self.url_scraping_completed = True
                 break
@@ -386,11 +417,12 @@ class HTMLScraper(JobListingScraper):
             new_urls = []
 
         # Phase 2: Get unarchived URLs and fetch their details
-        urls_of_listings_to_fetch = self._pick_urls_to_fetch(
+        urls_of_listings_to_fetch = self._pick_urls_to_archive(
             new_urls,
             retry_failures=retry_failures
         )
-        
+
+        # Export cache now if new URLs were assigned pending status
         if self.cache_is_updated:
             self._export_cache()
 
@@ -442,7 +474,6 @@ class APIScraper(JobListingScraper):
         Single-phase: API returns full listing data in one call.
         """
         listing_index = self.batch_current * batch_size
-        fetched_urls = []
 
         try:
             fetched_data = self.fetch_next_listing_batch(
@@ -456,7 +487,8 @@ class APIScraper(JobListingScraper):
         except Exception as e:
             print(f"Failed to fetch batch at index {listing_index}: {e}")
 
-            # Mark URLs from failed batch as failed (if we got them before error)
+            # Mark URLs as failed if parse succeeded but something else failed
+            # (won't have URLs if fetch/parse failed before URL extraction)
             if fetched_urls:
                 temp_cache = {
                     url: {
@@ -471,15 +503,12 @@ class APIScraper(JobListingScraper):
 
             self.batch_current += 1
             return [], pd.DataFrame()
-    
-        # Parse the response
-        fetched_urls, fetched_listings_df = self.parse_api_response(fetched_data)
-
+        
         if not len(fetched_urls):
             return [], pd.DataFrame()
 
         # Filter to only unarchived listings
-        unarchived_urls = self._pick_urls_to_fetch(
+        unarchived_urls = self._pick_urls_to_archive(
             fetched_urls,
             retry_failures=retry_failures
         )
