@@ -9,34 +9,60 @@ import requests
 import pandas as pd
 
 from scout.utils.text_processing import check_keyword_between_delimiters
+from scout.contexts.filtering.events import log_inactive_event
 
 
-def check_active(df: pd.DataFrame, url_column: str = "url") -> pd.DataFrame:
+def check_active(df: pd.DataFrame, url_column: str = "url", status_column: str = "Status") -> pd.DataFrame:
     """
-    Check if job listing URLs are still active. Currently, a URL is considered inactive if it redirects to a different URL.
+    Check if job listing URLs are still active and log status changes.
+
+    Inspired by the broadcast-subscribe pattern. This acts like the producer side:
+    - Checks URL validity
+    - Logs events when status changes
+    - Does not update database
 
     Args:
         df: DataFrame containing job listings
         url_column: Name of column containing URLs to check (default: "url")
+        status_column: Name of column with current status (expected: "Status")
 
     Returns:
         DataFrame with new "Inactive" boolean column added
     """
     inactives = []
-    for url in df[url_column].to_list():
+    has_status_column = status_column in df.columns
+
+    for _, row in df.iterrows():
+        url = row[url_column]
+
+        # If column doesn't exist, assumes a status of 'unknown'
+        old_status = row[status_column] if has_status_column else 'unknown'
+
         try:
             resp = requests.get(url, timeout=10)
-            # If URL redirected, consider it inactive
-            active = url == resp.url
-            inactives.append(not active)
-        except requests.RequestException:
-            # If request fails, consider inactive
-            inactives.append(True)
-        time.sleep(0.5)  # Be polite to servers
+
+            # Check for link-level issues that indicate the listing is inactive
+            # e.g. 404 meants the link doesn't exist
+            if 400 <= resp.status_code < 500 or url != resp.url:
+                new_status = 'inactive'
+            elif 200 <= resp.status_code < 300:
+                new_status = 'active'
+            else:
+                new_status = 'unknown'               
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.RequestException):
+            # Network-level issues or ambiguous issues
+            new_status = 'unknown'
+
+        if new_status != old_status:
+            log_inactive_event(url, old_status, new_status)
+        
+        inactive_status_bool_map = {"active": False, "inactive": True, "unknown": None}
+        inactives.append(inactive_status_bool_map[new_status])
+
+        time.sleep(0.5)  # Be "polite"
 
     df["Inactive"] = inactives
     return df
-
 
 def check_column_red_flags(
     df: pd.DataFrame,

@@ -18,6 +18,9 @@ from scout.contexts.storage.schema import (
 from scout.contexts.storage.getter import (
     get_database_wrapper,
 )
+from scout.contexts.storage.maintenance import (
+    process_inactive_events,
+)
 
 __all__ = [
     # Factory function (primary interface)
@@ -28,6 +31,8 @@ __all__ = [
     "SchemaInspector",
     # Utilities
     "draw_db_tree",
+    # Maintenance workers (event consumers)
+    "process_inactive_events",
 ]
 
 

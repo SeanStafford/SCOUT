@@ -345,6 +345,11 @@ class HTMLScraper(JobListingScraper):
                 scraped_info = self.parse_listing_webpage(
                     url=listing_url, html_response=fetched_listing_webpage
                 )
+
+                # Set initial status and timestamp (if columns exist in df2db_col_map)
+                scraped_info["Status"] = "active"
+                scraped_info["Last Checked"] = datetime.now()
+
                 scraped_info_list.append(scraped_info)
 
                 # Mark as successful in cache
