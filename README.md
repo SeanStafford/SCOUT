@@ -1,51 +1,51 @@
 # SCOUT
 ```
-   ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄    
-   █                                                                       █    
-   █                                 ██████                                █    
-   █                            ████████████████                           █    
-   █                           █████▀▀▀   ▀▀█████                          █    
-   █                          ██▀ ▓▓▓▓▓▓▓▓▓▓▓▓ ▀██                         █    
-   █                          ▀█▓▓▓▓▓▓▓▓▓       █                          █    
-   █                           █                █                          █    
-   █                   ▄▄ ▄██████████▄ ▄▄ ▄██████████▄▄                    █    
-   █                 █▀ █▀▀▀  ▀▀██████▓▒▒▓██████▀▀  ▀▀▀█ ▀▄                █    
-   █                █  █  ▒▒▒▒▒▒ ██████████████ ▒▒▒▒▒▒  █  █               █    
-   █                █ ▄▀ ▒▒▒▒▒▒▒▒ █████▀ ▀████ ▒▒▒▒▒▒▒▒ █▄ █               █    
-   █                █ ▀▄ ▒▒▒▒▒▒▒▒ ███▀    ▀███ ▒▒▒▒▒▒▒▒ ██ █               █    
-   █               █▀  █▄ ▒▒▒▒▒▒ ██▀        ▀██ ▒▒▒▒▒▒ ██  ▀█              █    
-   █               █    ▀█▄▄▄▄▄▄█              ██▄▄▄▄▄█▀     █             █    
-   █             ██▄        ▄█  █              █  █▄        ▄██            █    
-   █            ██████▄  ▄▄▀    ██            ██    ▀▄▄  ▄██████           █    
-   █           ██████████▄       ██          ██        ██████████          █    
-   █          ████████████       █ ▀▀▀▀▀▀▀▀▀▀ █       ████████████         █    
-   █         ████████████     ▄███            ███▄     ████████████        █    
-   █        ████████████▀  ▄███████▄        ▄██████▄   ▀████████████       █    
-   █       ██████████████████████████▄    ▄██████████████████████████      █    
-   █     ██████████████████████████████▒▒█████████████████████████████     █    
-   █     ██████████████████████████████▒▒█████████████████████████████     █    
-   █     ██████████████████████████████▒▒█████████████████████████████     █    
-   █      █████████████████████████████▒▒████████████████████████████      █    
-   █                                                                       █    
-   █   ██████████   ██████████   ███████████   ██       ██   ███████████   █    
-   █   ██           ███          ██       ██   ██       ██       ███       █    
-   █   ██           ███          ██       ██   ██       ██       ███       █    
-   █   ██████████   ███          ██       ██   ██       ██       ███       █    
-   █           ██   ███          ██       ██   ██       ██       ███       █    
-   █           ██   ███          ██       ██   ██       ██       ███       █    
-   █   ██████████   ██████████   ███████████   ███████████       ███       █    
-   █                                                                       █    
-   █    Scraping Career Opportunities Using Technology                     █    
-   █                                                              v0.1.0   █    
-   █                                            created by Sean Stafford   █    
-   █                                                                       █    
-   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+   ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+   █                                                                       █
+   █                                 ██████                                █
+   █                            ████████████████                           █
+   █                           █████▀▀▀   ▀▀█████                          █
+   █                          ██▀ ▓▓▓▓▓▓▓▓▓▓▓▓ ▀██                         █
+   █                          ▀█▓▓▓▓▓▓▓▓▓       █                          █
+   █                           █                █                          █
+   █                   ▄▄ ▄██████████▄ ▄▄ ▄██████████▄▄                    █
+   █                 █▀ █▀▀▀  ▀▀██████▓▒▒▓██████▀▀  ▀▀▀█ ▀▄                █
+   █                █  █  ▒▒▒▒▒▒ ██████████████ ▒▒▒▒▒▒  █  █               █
+   █                █ ▄▀ ▒▒▒▒▒▒▒▒ █████▀ ▀████ ▒▒▒▒▒▒▒▒ █▄ █               █
+   █                █ ▀▄ ▒▒▒▒▒▒▒▒ ███▀    ▀███ ▒▒▒▒▒▒▒▒ ██ █               █
+   █               █▀  █▄ ▒▒▒▒▒▒ ██▀        ▀██ ▒▒▒▒▒▒ ██  ▀█              █
+   █               █    ▀█▄▄▄▄▄▄█              ██▄▄▄▄▄█▀     █             █
+   █             ██▄        ▄█  █              █  █▄        ▄██            █
+   █            ██████▄  ▄▄▀    ██            ██    ▀▄▄  ▄██████           █
+   █           ██████████▄       ██          ██        ██████████          █
+   █          ████████████       █ ▀▀▀▀▀▀▀▀▀▀ █       ████████████         █
+   █         ████████████     ▄███            ███▄     ████████████        █
+   █        ████████████▀  ▄███████▄        ▄██████▄   ▀████████████       █
+   █       ██████████████████████████▄    ▄██████████████████████████      █
+   █     ██████████████████████████████▒▒█████████████████████████████     █
+   █     ██████████████████████████████▒▒█████████████████████████████     █
+   █     ██████████████████████████████▒▒█████████████████████████████     █
+   █      █████████████████████████████▒▒████████████████████████████      █
+   █                                                                       █
+   █   ██████████   ██████████   ███████████   ██       ██   ███████████   █
+   █   ██           ███          ██       ██   ██       ██       ███       █
+   █   ██           ███          ██       ██   ██       ██       ███       █
+   █   ██████████   ███          ██       ██   ██       ██       ███       █
+   █           ██   ███          ██       ██   ██       ██       ███       █
+   █           ██   ███          ██       ██   ██       ██       ███       █
+   █   ██████████   ██████████   ███████████   ███████████       ███       █
+   █                                                                       █
+   █    Scraping Career Opportunities Using Technology                     █
+   █                                                              v0.1.0   █
+   █                                            created by Sean Stafford   █
+   █                                                                       █
+   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ```
 
 
 **Scraping Career Opportunities Using Technology**
 
-A job listing scraper system that collects job postings from various employers and stores them in PostgreSQL for analysis and filtering. SCOUT provides a flexible, extensible framework for scraping job listings from multiple career websites. It handles diverse website patterns—traditional HTML, pure APIs, and hybrid approaches—through a domain-driven architecture that makes it easy to add new job sites.
+A domain-driven job scraping and filtering system. SCOUT scrapes job listings from employer career sites, stores them in PostgreSQL, and provides flexible filtering through declarative configuration files.
 
 ## Installation
 
@@ -86,31 +86,55 @@ chmod 600 .env
 
 ## Architecture
 
-SCOUT follows Domain-Driven Design (DDD) principles with clear separation of concerns:
+SCOUT follows Domain-Driven Design with three main bounded contexts:
 
+### 1. Scraping Context
+Handles data collection from career websites. Supports both HTML parsing and API-based scrapers.
+
+- **Cache management**: Tracks scraped/failed/pending URLs with JSON state files
+- **Status tracking**: Marks listings as `active` during initial scraping
+- **Resume capability**: Interrupted scrapes continue from last checkpoint
+
+### 2. Storage Context
+Manages database operations and schema. Database-agnostic design with PostgreSQL implementation.
+
+- **Event consumer**: Processes status change events from filtering context
+- **Maintenance workers**: Updates database based on event logs
+- **Schema utilities**: Inspect and visualize database structure
+
+### 3. Filtering Context
+Job filtering through YAML configuration files ("declarative")
+
+- **FilterPipeline**: Config-driven filtering (SQL + pandas operations)
+- **Event producer**: Logs status changes when URLs become inactive
+- **Read-only**: Never directly modifies database (respects bounded contexts)
+
+---
 
 ### Project Structure
 
-
 ```
 SCOUT/
-├── scout/                  
-│   ├── contexts/           # Domain contexts
-│   │   ├── scraping/       
-│   │   └── storage/        
-│   └── utils/              
-├── data/                  
-│   ├── cache/              # URL cache files
-│   └── exports/           
-├── notebooks/            
-├── outs/                 
-│   └── logs/             
+├── scout/
+│   ├── contexts/
+│   │   ├── scraping/       # Data collection (HTMLScraper, APIScraper)
+│   │   ├── storage/        # Database operations
+│   │   └── filtering/      # Config-driven filtering
+│   └── utils/              # Shared utilities (text processing, etc.)
+├── config/                 # Filtering configuration
+├── data/
+│   ├── cache/              # URL cache files (JSON)
+│   └── exports/
+├── outs/
+│   └── logs/               # Event logs for cross-context communication
+├── notebooks/
 ├── tests/                  # Test suite
 │   ├── unit/
 │   └── integration/
 └── docs/                   # Documentation
 ```
 
+---
 
 ### Scraper Types
 
@@ -127,8 +151,60 @@ SCOUT/
 - For pure API-based job sites
 - Single-phase: complete data in one call
 
+---
+
+### Communication without (direct) coupling
+
+Contexts communicate through **log files** rather than direct calls, maintaining loose coupling:
+
+```
+Filtering Context                Storage Context
+    (producer)                      (consumer)
+        │                               │
+        │  check_active()               │
+        │  detects inactive URL         │
+        │                               │
+        ├──> Event Log ──────────────>  │
+        │    (JSON file)                │  process_inactive_events()
+        │                               │  updates database
+        │                               ▼
+```
+
+This pattern respects **bounded context** principles: each context owns its domain, communicating via events instead of direct database access.
+
+---
 
 
+## Example Workflow
+
+**1. Configure Filters** (`config/filters.yaml`)
+
+**2. Run Scraper**
+```python
+from scout.contexts.scraping.scrapers import BoozScraper
+
+scraper = BoozScraper()
+scraper.propagate(batch_size=50)
+```
+
+**3. Apply Filters** (notebook)
+```python
+from scout.contexts.filtering import FilterPipeline
+
+pipeline = FilterPipeline("config/filters.yaml")
+query = pipeline.build_sql_query()
+df = scraper.import_db_as_df(query=query)
+df_filtered = pipeline.apply_filters(df)
+```
+
+**4. Process Events** (maintenance)
+```python
+from scout.contexts.storage import process_inactive_events
+
+events_processed = process_inactive_events(db)
+```
+
+---
 ## Key Features
 
 - **Flexible Architecture**: Base classes handle common functionality while supporting diverse scraping patterns
@@ -168,7 +244,7 @@ Common fields:
 - `max_retries`: Maximum retry attempts (default: 2)
 
 
-## Development Workflow
+## Useful commands for development
 
 ```bash
 # View all available commands
@@ -197,7 +273,6 @@ make cache-log
 - Unified database schema across all employers
 - Metadata table to track scraping history
 - Smarter wait times (randomized delays)
-- Enhanced error handling for failed listings
 
 ### Medium Term
 - CLI interface for easier operation
@@ -209,4 +284,3 @@ make cache-log
 - Neo4J integration for graph-based analysis
 - Automated job feed curation
 - REST API for external access
-
