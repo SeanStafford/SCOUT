@@ -1,69 +1,33 @@
 # Storage Context
 
-The storage context provides database abstraction and persistence functionality for SCOUT. It implements a clean separation between generic database operations and backend-specific implementations.
+The storage context provides database abstraction and persistence for SCOUT. It implements clean separation between generic database operations and backend-specific implementations, following **bounded context** principles from Domain-Driven Design.
 
-## Architecture
+## Responsibilities
 
-The storage context follows a layered architecture with a factory pattern:
+**What storage context owns:**
+- Database connections and schema management
+- Event consumption (maintenance workers)
+- Archive management for processed events
 
-```
-┌─────────────────────────────────────────┐
-│  Factory Layer (getter.py)              │
-│  - get_database_wrapper()               │
-│  - backend_class_map                    │
-│  - ALLOWED_BACKENDS                     │
-└─────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  Generic Layer (database.py)            │
-│  - DatabaseConfig (configuration)       │
-│  - DatabaseWrapper (abstract base)      │
-└─────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│  Backend Layer (e.g. postgres.py)       │
-│  - PostgreSQLWrapper                    │
-│  - PostgreSQLSchemaInspector            │
-│  - postgres_connect                     │
-└─────────────────────────────────────────┘
-```
+**What it does NOT do:**
+- Scraping or filtering logic (other contexts)
+- Direct modification by external contexts (uses events)
 
-## Core Components
 
-### `get_database_wrapper()` ([getter.py](getter.py))
-
-**Responsibility:** Factory function that creates appropriate database wrapper based on `DATABASE_BACKEND` environment variable.
-
-**What it does:**
-- Reads `DATABASE_BACKEND` from environment
-- Maps backend name to implementation class via `backend_class_map`
-- Returns appropriate `DatabaseWrapper` implementation
-- Optionally ensures database exists via `ensure_exists` parameter
-
-**What it doesn't do:**
-- Does not expose backend implementation details
-
-**Usage:**
+### **Example Workflow:**
 ```python
 # Primary interface for getting database wrappers
+from scout.contexts.storage import get_database_wrapper, DatabaseConfig
+
 config = DatabaseConfig.from_env(name="my_database")
 db = get_database_wrapper(config, ensure_exists=True)
 
-# Now you can use the database wrapper
-conn = db.connect()
-df = db.export_df("SELECT * FROM users")
+# Now use the database
+df = db.export_df("SELECT * FROM listings WHERE status = 'active'")
 ```
 
-**Adding new backends:**
-To support a new database backend (e.g., MySQL), update `getter.py`:
-```python
-backend_class_map = {
-    "postgres": PostgreSQLWrapper,
-    "mysql": MySQLWrapper,  # Add your implementation
-}
-```
 
----
+## Core Components
 
 ### `DatabaseConfig` ([database.py](database.py))
 
@@ -82,7 +46,7 @@ backend_class_map = {
 **Usage:**
 ```python
 # From environment variables
-config = DatabaseConfig.from_env(name="my_database", table="my_table")
+config = DatabaseConfig.from_env(name="my_database", table="listings")
 
 # Manual construction
 config = DatabaseConfig(
@@ -91,14 +55,9 @@ config = DatabaseConfig(
     user="postgres",
     password="secret",
     name="my_database",
-    table="my_table"
+    table="listings"
 )
-
-# Access connection string
-engine = create_engine(config.connection_string)
 ```
-
----
 
 ### `DatabaseWrapper` ([database.py](database.py))
 
@@ -122,37 +81,136 @@ engine = create_engine(config.connection_string)
 ```python
 class MyDatabaseWrapper(DatabaseWrapper):
     def connect(self):
-        # Implementation specific to your database
+        # Your implementation
         pass
 
-    def get_column_values(self, table_name: str, column_name: str) -> list:
-        # Implementation specific to your database
+    def export_df(self, query: str) -> pd.DataFrame:
+        # Your implementation
         pass
 
     # ... implement other abstract methods
 ```
 
----
 
-### `SchemaInspector` ([schema.py](schema.py))
+## Architecture
 
-**Responsibility:** Abstract base class for database schema introspection.
+### Factory Pattern
 
-**What it does:**
-- Defines interface for schema inspection:
-  - `list_tables()` - List all tables in database
-  - `list_columns(table)` - List columns in a table
-  - `tree(draw=True)` - Generate schema tree visualization
-- Provides database-agnostic tree generation logic
+```
+┌─────────────────────────────────┐
+│  Factory Layer (getter.py)      │
+│  get_database_wrapper()         │
+└────────────┬────────────────────┘
+             ↓
+┌─────────────────────────────────┐
+│  Generic Layer (database.py)    │
+│  DatabaseConfig, DatabaseWrapper│
+└────────────┬────────────────────┘
+             ↓
+┌─────────────────────────────────┐
+│  Backend Layer (postgres.py)    │
+│  PostgreSQLWrapper              │
+└─────────────────────────────────┘
+```
 
-**What it doesn't do:**
-- Does not modify schema (read-only)
-- Does not validate schema structure
-- Does not manage migrations
 
----
+### Event-Driven Communication
+
+Storage context implements the **consumer side** of the broadcast-subscribe pattern. Other contexts (like filtering) produce events; storage consumes and processes them.
+
+#### Event Flow
+
+```
+Filtering Context                  Storage Context
+  (producer)                         (consumer)
+      │                                  │
+      │  check_active()                  │
+      │  detects inactive URL            │
+      │                                  │
+      ├──> Event Log ────────────────>   │
+      │    listing_became_inactive.txt   │
+      │    (JSON Lines format)           │
+      │                                  │
+      │                                  ▼
+      │                        process_inactive_events()
+      │                        reads log, updates DB
+      │                                  │
+      │                                  ▼
+      │                        Archive processed events
+      │                        to *_processed.txt
+```
+
+#### [maintenance.py](maintenance.py)
+
+**`process_inactive_events(db_wrapper)`**
+
+Reads events from `outs/logs/listing_became_inactive.txt` and updates database in a manner that:
+- Decouples event logging from processing (enabling async/scheduled processing)
+- Respects bounded contexts (storage owns database, filtering doesn't)
+
+```python
+from scout.contexts.storage import get_database_wrapper, DatabaseConfig, process_inactive_events
+
+config = DatabaseConfig.from_env('my_database')
+db = get_database_wrapper(config)
+
+# Process all pending events
+events_processed = process_inactive_events(db)
+print(f"Updated {events_processed} listings")
+```
+
+
+## Design Principles
+
+### Bounded Context
+
+Storage context is isolated:
+- Other contexts depend on storage, storage is independent
+- External contexts communicate via events, not direct DB writes
+- Implementation details (PostgreSQL specifics) hidden behind abstractions
+
+### Event-Driven Updates
+
+**Old approach (violates bounded contexts):**
+```python
+# Filtering context directly updates database
+df = check_active(df)
+db.execute("UPDATE listings SET status = 'inactive' WHERE ...")
+```
+
+**New approach (respects bounded contexts):**
+```python
+# Filtering logs events
+df = check_active(df)  # Logs to outs/logs/listing_became_inactive.txt
+
+# Storage processes events (later, asynchronously)
+process_inactive_events(db)  # Reads log, updates database
+```
+
+### Separation of Concerns
+
+1. **Factory** - Selects implementation based on configuration
+2. **Abstract interfaces** - Define database-agnostic operations
+3. **Backend implementations** - PostgreSQL, MySQL, etc.
+4. **Configuration** - Separate from connection management
+5. **Event consumers** - Process cross-context events
+
+
 
 ## Utility Functions
+
+
+### `get_database_wrapper()` (Factory)
+
+Primary interface - automatically selects backend based on `DATABASE_BACKEND` env var:
+
+```python
+# Returns PostgreSQLWrapper if DATABASE_BACKEND=postgres
+db = get_database_wrapper(config, ensure_exists=True)
+```
+
+---
+
 
 ### `draw_db_tree()` ([schema.py](schema.py))
 
@@ -168,6 +226,7 @@ class MyDatabaseWrapper(DatabaseWrapper):
 
 **Usage:**
 ```python
+from scout.contexts.storage.schema import draw_db_tree
 import numpy as np
 
 tree_data = np.array([
@@ -183,38 +242,10 @@ draw_db_tree(tree_data, "my_database")
 **Output:**
 ```
 └── my_database
-    ├── users
+    ├── posts
     │   ├── id
-    │   └── name
-    └── posts
+    │   └── user_id
+    └── users
         ├── id
-        └── user_id
+        └── name
 ```
-
----
-
-## Design Principles
-
-### Bounded Context
-
-The storage context is a **bounded context** in Domain-Driven Design terms:
-- It owns database connection and persistence logic
-- Other contexts depend on storage, but storage is independent
-- **Implementation details are hidden** - Other contexts only see the factory and abstract interfaces
-
-### Factory Pattern
-
-The storage context uses a factory pattern to decouple clients from specific implementations:
-- Call `get_database_wrapper(config)` instead of directly instantiating a specific wrapper
-- The `DATABASE_BACKEND` environment variable determines which implementation is returned
-- Implementation classes (`PostgreSQLWrapper`, `PostgreSQLSchemaInspector`) are not exported
-- This allows adding new database backends without changing code outside of the storage context
-
-### Separation of Concerns
-
-1. **Factory** (`get_database_wrapper`) - Gets implementation based on configuration
-2. **Abstract interfaces** (`DatabaseWrapper`, `SchemaInspector`) - Define classes
-3. **Backend implementations** - Implement classes
-4. **Configuration** (`DatabaseConfig`) - Separate from connection management
-
----
