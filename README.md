@@ -179,12 +179,20 @@ This pattern respects **bounded context** principles: each context owns its doma
 
 **1. Configure Filters** (`config/filters.yaml`)
 
-**2. Run Scraper**
+**2. Run Scrapers**
+
+Via orchestration (recommended - includes logging):
+```bash
+make scrape                          # Run all scrapers
+python scripts/run_scrapers.py run BoozScraper  # Run specific scraper
+```
+
+Manually:
 ```python
 from scout.contexts.scraping.scrapers import ACMECorpScraper
 
 scraper = ACMECorpScraper()
-scraper.propagate(batch_size=50)
+scraper.propagate(batch_size=10)
 ```
 
 **3. Apply Filters** (notebook)

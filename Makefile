@@ -94,6 +94,20 @@ cache-log:
 	echo ">>> Cache statistics logged to $$LOGFILE"
 
 #################################################################################
+# SCRAPER COMMANDS                                                              #
+#################################################################################
+
+## Run all scrapers with default settings
+.PHONY: scrape
+scrape:
+	python scripts/run_scrapers.py run
+
+## List available scrapers
+.PHONY: scrape-list
+scrape-list:
+	python scripts/run_scrapers.py list
+
+#################################################################################
 # Self Documenting Boilerplate                                                  #
 #################################################################################
 

@@ -44,7 +44,21 @@ JobListingScraper (Abstract)
 - **Rate limiting**: Configurable delays between requests
 - **Deduplication**: Set-based operations prevent duplicate entries
 - **Archive-as-authority**: Database truth overwrites stale cache entries
+- **scraper orchestration**: Automated scraper execution with logging
 
+## Scraper Orchestration
+
+```bash
+# Run all scrapers
+make scrape
+
+# Run specific scrapers with options
+python scripts/run_scrapers.py run ACMEScraper --batch-size 50 --start-page 0
+```
+
+**Features:**
+- Timestamped logs in `outs/logs/scraping_*.txt`
+- Success/failure tracking with partial progress on errors
 
 ## Cache State Management
 
@@ -117,4 +131,5 @@ parse_listing_webpage(url, html_response) -> dict
 - Efficiently discover all listings first
 - Selectively fetch only unarchived details
 - Resume mid-scrape without re-discovering URLs
+
 
