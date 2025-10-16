@@ -76,7 +76,7 @@ recent:
 .PHONY: cache-stats
 cache-stats:
 	@echo ">>> Cache file statistics:"
-	@wc -l data/cache/*.txt
+	@python3 scripts/cache_stats.py
 
 ## Log cache statistics to timestamped file
 .PHONY: cache-log
@@ -87,10 +87,10 @@ cache-log:
 	echo "SCOUT Cache Statistics - $$(date)" > $$LOGFILE; \
 	echo "========================================" >> $$LOGFILE; \
 	echo "" >> $$LOGFILE; \
-	wc -l data/cache/*.txt >> $$LOGFILE; \
+	python3 scripts/cache_stats.py >> $$LOGFILE; \
 	echo "" >> $$LOGFILE; \
 	echo "Detailed file info:" >> $$LOGFILE; \
-	ls -lh data/cache/*.txt >> $$LOGFILE; \
+	ls -lh data/cache/*.json >> $$LOGFILE; \
 	echo ">>> Cache statistics logged to $$LOGFILE"
 
 #################################################################################
