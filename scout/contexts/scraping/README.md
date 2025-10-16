@@ -58,9 +58,9 @@ TEMP_STATUS ("pending")
 SUCCESS_STATUS ("success")  or  FAILURE_STATUS ("failed")
 ```
 
-### Cache File Format (JSON Lines)
+### Cache File Format (JSON)
 
-`data/cache/booz_listing_urls.json`:
+`data/cache/ACME_Corp_listing_urls.json`:
 ```json
 {
   "https://careers.example.com/job/123": {

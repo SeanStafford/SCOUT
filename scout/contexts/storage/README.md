@@ -128,11 +128,11 @@ Filtering Context                  Storage Context
       │  detects inactive URL            │
       │                                  │
       ├──> Event Log ────────────────>   │
-      │    listing_became_inactive.txt   │
+      │    listing_status_changed.txt    │
       │    (JSON Lines format)           │
       │                                  │
       │                                  ▼
-      │                        process_inactive_events()
+      │                        process_status_events()
       │                        reads log, updates DB
       │                                  │
       │                                  ▼
@@ -142,20 +142,36 @@ Filtering Context                  Storage Context
 
 #### [maintenance.py](maintenance.py)
 
-**`process_inactive_events(db_wrapper)`**
+**`process_status_events(database_names=None)`**
 
-Reads events from `outs/logs/listing_became_inactive.txt` and updates database in a manner that:
+Orchestrator function that processes status change events for one or more databases.
 - Decouples event logging from processing (enabling async/scheduled processing)
 - Respects bounded contexts (storage owns database, filtering doesn't)
+- Can discover and process all databases automatically
 
 ```python
-from scout.contexts.storage import get_database_wrapper, DatabaseConfig, process_inactive_events
+from scout.contexts.storage import process_status_events
+
+# Process specified databases
+results = process_status_events(["ACME_Corp_job_listings", "MomCorp_job_listings"])
+
+# Process all databases found in events
+results = process_status_events()
+print(f"Processed: {results}")  # {'ACME_Corp_job_listings': 5, ...}
+```
+
+**`process_status_events_for_database(db_wrapper)`**
+
+Lower-level function for processing events for a specific database.
+
+```python
+from scout.contexts.storage import get_database_wrapper, DatabaseConfig
+from scout.contexts.storage import process_status_events_for_database
 
 config = DatabaseConfig.from_env('my_database')
 db = get_database_wrapper(config)
 
-# Process all pending events
-events_processed = process_inactive_events(db)
+events_processed = process_status_events_for_database(db)
 print(f"Updated {events_processed} listings")
 ```
 
@@ -174,17 +190,17 @@ Storage context is isolated:
 **Old approach (violates bounded contexts):**
 ```python
 # Filtering context directly updates database
-df = check_active(df)
+df = check_active(df, database_name="my_db")
 db.execute("UPDATE listings SET status = 'inactive' WHERE ...")
 ```
 
 **New approach (respects bounded contexts):**
 ```python
 # Filtering logs events
-df = check_active(df)  # Logs to outs/logs/listing_became_inactive.txt
+df = check_active(df, database_name="my_db")  # Logs to outs/logs/listing_status_changed.txt
 
 # Storage processes events (later, asynchronously)
-process_inactive_events(db)  # Reads log, updates database
+process_status_events("my_db")  # Reads log, updates database
 ```
 
 ### Separation of Concerns

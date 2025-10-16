@@ -84,19 +84,27 @@ Filtering context **logs events** when detecting status changes, allowing storag
 
 ### `check_active()` Function
 
-Checks if URLs are still valid. URLs that redirect or fail are logged to `outs/logs/listing_became_inactive.txt` but the database itself is only read (not written to.)
+Checks if URLs are still valid and logs status changes to event log.
 
 ```python
 from scout.contexts.filtering import check_active
-df_with_status = check_active(df) # Returns dataframe with added "Inactive" column
+
+df_with_status = check_active(df, database_name="ACME_Corp_job_listings")
+# Returns dataframe with added "Inactive" column
+# Logs events to outs/logs/listing_status_changed.txt
 
 ```
 
-**Event log format** (JSON Lines):
+**Event log format** (JSON Lines - one JSON per line):
 ```json
-{"timestamp": "2024-10-14T10:30:00", "url": "https://...", "old_status": "active", "new_status": "inactive"}
-{"timestamp": "2024-10-14T10:31:00", "url": "https://...", "old_status": "unknown", "new_status": "inactive"}
+{"timestamp": "2024-10-14T10:30:00", "database": "ACME_Corp_job_listings", "url": "https://...", "old_status": "active", "new_status": "inactive"}
+{"timestamp": "2024-10-14T10:31:00", "database": "ACME_Corp_job_listings", "url": "https://...", "old_status": "unknown", "new_status": "inactive"}
 ```
+
+**Why JSON Lines?**
+- Append-friendly: new events added without rewriting entire file
+- Can process line-by-line without loading everything into memory
+- Crash-resistant: partial writes don't corrupt previous events
 
 ---
 
@@ -163,10 +171,10 @@ Filtering context **never writes to database**:
 
 ```python
 # ✅ Correct: logs events
-df = check_active(df)  # Writes to outs/logs/listing_became_inactive.txt
+df = check_active(df, database_name="my_db")  # Writes to outs/logs/listing_status_changed.txt
 
 # Later, storage context updates database
-process_inactive_events(db)
+process_status_events("my_db")
 ```
 
 This respects bounded context principles and enables async/scheduled processing.

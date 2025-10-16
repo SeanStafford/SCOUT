@@ -165,7 +165,7 @@ Filtering Context                Storage Context
         │  detects inactive URL         │
         │                               │
         ├──> Event Log ──────────────>  │
-        │    (JSON file)                │  process_inactive_events()
+        │    (JSON file)                │  process_status_events()
         │                               │  updates database
         │                               ▼
 ```
@@ -181,9 +181,9 @@ This pattern respects **bounded context** principles: each context owns its doma
 
 **2. Run Scraper**
 ```python
-from scout.contexts.scraping.scrapers import BoozScraper
+from scout.contexts.scraping.scrapers import ACMECorpScraper
 
-scraper = BoozScraper()
+scraper = ACMECorpScraper()
 scraper.propagate(batch_size=50)
 ```
 
@@ -199,9 +199,10 @@ df_filtered = pipeline.apply_filters(df)
 
 **4. Process Events** (maintenance)
 ```python
-from scout.contexts.storage import process_inactive_events
+from scout.contexts.storage import process_status_events
 
-events_processed = process_inactive_events(db)
+results = process_status_events("ACME_Corp_job_listings")
+# Or process all databases: process_status_events()
 ```
 
 ---
