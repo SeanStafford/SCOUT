@@ -87,7 +87,6 @@ class FilterPipeline:
 
         # Status filter
         if sql_config.get("status_filter", False):
-            assert False, "Calling attention to not implemented status filter (see all rows are None in dataframe)"
             conditions.append(
                 f"(status = '{sql_config.status_filter}' OR status IS NULL)"
             )

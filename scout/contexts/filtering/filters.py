@@ -9,10 +9,15 @@ import requests
 import pandas as pd
 
 from scout.utils.text_processing import check_keyword_between_delimiters
-from scout.contexts.filtering.events import log_inactive_event
+from scout.contexts.filtering.events import log_status_event
 
 
-def check_active(df: pd.DataFrame, url_column: str = "url", status_column: str = "Status") -> pd.DataFrame:
+def check_active(
+    df: pd.DataFrame,
+    database_name: str,
+    url_column: str = "url",
+    status_column: str = "Status"
+) -> pd.DataFrame:
     """
     Check if job listing URLs are still active and log status changes.
 
@@ -23,6 +28,7 @@ def check_active(df: pd.DataFrame, url_column: str = "url", status_column: str =
 
     Args:
         df: DataFrame containing job listings
+        database_name: Name of database these listings belong to (for event logging)
         url_column: Name of column containing URLs to check (default: "url")
         status_column: Name of column with current status (expected: "Status")
 
@@ -54,7 +60,7 @@ def check_active(df: pd.DataFrame, url_column: str = "url", status_column: str =
             new_status = 'unknown'
 
         if new_status != old_status:
-            log_inactive_event(url, old_status, new_status)
+            log_status_event(url, old_status, new_status, database_name)
         
         inactive_status_bool_map = {"active": False, "inactive": True, "unknown": None}
         inactives.append(inactive_status_bool_map[new_status])

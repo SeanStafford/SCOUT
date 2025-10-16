@@ -19,7 +19,9 @@ from scout.contexts.storage.getter import (
     get_database_wrapper,
 )
 from scout.contexts.storage.maintenance import (
-    process_inactive_events,
+    process_status_events,
+    process_status_events_for_database,
+    process_inactive_events,  # Deprecated
 )
 
 __all__ = [
@@ -32,7 +34,9 @@ __all__ = [
     # Utilities
     "draw_db_tree",
     # Maintenance workers (event consumers)
-    "process_inactive_events",
+    "process_status_events",
+    "process_status_events_for_database",
+    "process_inactive_events",  # Deprecated
 ]
 
 
