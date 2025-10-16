@@ -71,6 +71,7 @@ class PostgreSQLWrapper(BaseDBWrapper):
         Add column to table if it doesn't already exist (idempotent).
 
         Useful for schema migrations without dropping/recreating entire database.
+        Now logs schema migration events for audit trail and backfill tracking.
 
         Args:
             table: Table name
@@ -79,7 +80,14 @@ class PostgreSQLWrapper(BaseDBWrapper):
 
         Example:
             >>> db.ensure_column_exists("listings", "status", "VARCHAR(20)")
+
+        Side Effects:
+            - Adds column to database if it doesn't exist
+            - Logs schema migration event to outs/logs/schema_migrations.txt
+            - Event includes count of existing rows (now have NULL in new column)
         """
+        from scout.contexts.storage.events import log_schema_migration_event
+
         conn = self.connect()
         cursor = conn.cursor()
 
@@ -94,10 +102,26 @@ class PostgreSQLWrapper(BaseDBWrapper):
         )
 
         if cursor.fetchone() is None:
+            # Count existing rows before adding column
+            # (these rows will have NULL in the new column - may need backfilling)
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            row_count = cursor.fetchone()[0]
+
             # Column doesn't exist, add it
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {datatype}")
             conn.commit()
             print(f"✓ Added column '{column}' ({datatype}) to table '{table}'")
+
+            # Log schema migration event
+            log_schema_migration_event(
+                database=self.config.name,
+                table=table,
+                column=column,
+                datatype=datatype,
+                action="added",
+                reason="ensure_column_exists() called during initialization",
+                rows_affected=row_count
+            )
         else:
             pass  # Column already exists, nothing to do
 

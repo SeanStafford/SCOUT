@@ -1,0 +1,128 @@
+# SCOUT Canonical Data Schema
+
+canonical_schema:
+  # ============================================================================
+  # CORE IDENTIFICATION FIELDS
+  # ============================================================================
+
+  title:
+    df_name: "Title"
+    db_name: "title"
+    type: "VARCHAR(255)"
+    required: true
+    default: null
+    description: "Job title or position name"
+
+  job_id:
+    df_name: "Job ID"
+    db_name: "job_id"
+    type: "VARCHAR(100)"
+    required: false
+    default: null
+    description: "Employer's internal job ID, requisition number, or posting ID"
+
+  url:
+    df_name: "URL"
+    db_name: "url"
+    type: "TEXT"
+    required: true
+    default: null
+    description: "Unique URL for the job listing (used as primary identifier)"
+
+  # ============================================================================
+  # LOCATION & WORK ARRANGEMENT
+  # ============================================================================
+
+  location:
+    df_name: "Location"
+    db_name: "location"
+    type: "TEXT"
+    required: true
+    default: "Unknown"
+    description: "Geographic location(s) for the position (city, state, country)"
+
+  remote:
+    df_name: "Remote"
+    db_name: "remote"
+    type: "VARCHAR(20)"
+    required: true
+    default: "Unknown"
+    description: "Remote work option. Values: 'Yes' (fully remote), 'No' (onsite only), 'Hybrid' (mixed), 'Unknown' (not specified)"
+    
+  # ============================================================================
+  # COMPENSATION
+  # ============================================================================
+
+  min_salary:
+    df_name: "Min Salary"
+    db_name: "min_salary"
+    type: "INTEGER"
+    required: false
+    default: 0
+    description: "Minimum annual salary in USD (0 if unavailable or not disclosed)"
+    
+  max_salary:
+    df_name: "Max Salary"
+    db_name: "max_salary"
+    type: "INTEGER"
+    required: false
+    default: 0
+    description: "Maximum annual salary in USD (0 if unavailable or not disclosed)"
+    
+  # ============================================================================
+  # CONTENT
+  # ============================================================================
+
+  description:
+    df_name: "Description"
+    db_name: "description"
+    type: "TEXT"
+    required: true
+    default: ""
+    description: "Full job description in markdown format"
+    
+  # ============================================================================
+  # TEMPORAL METADATA
+  # ============================================================================
+
+  date_posted:
+    df_name: "Date Posted"
+    db_name: "date_posted"
+    type: "TIMESTAMP"
+    required: false
+    default: null
+    description: "When the job was originally posted by the employer"
+    
+  # ============================================================================
+  # ORGANIZATIONAL METADATA
+  # ============================================================================
+
+  department:
+    df_name: "Department"
+    db_name: "department"
+    type: "VARCHAR(255)"
+    required: false
+    default: null
+    description: "Department, division, or business unit within the company"
+
+  # ============================================================================
+  # SCOUT INTERNAL STATUS TRACKING
+  # ============================================================================
+
+  status:
+    df_name: "Status"
+    db_name: "status"
+    type: "VARCHAR(20)"
+    required: false
+    default: null
+    description: "Scraping/verification status: 'active' (verified available), 'inactive' (no longer available), 'success' (successfully scraped), 'failed' (scraping failed)"
+    
+  last_checked:
+    df_name: "Last Checked"
+    db_name: "last_checked"
+    type: "TIMESTAMP"
+    required: false
+    default: null
+    description: "Last time SCOUT verified or updated this listing"
+
+  # ============================================================================

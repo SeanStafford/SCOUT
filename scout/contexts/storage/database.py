@@ -101,6 +101,16 @@ class DatabaseWrapper(ABC):
         """
         pass
 
+    @abstractmethod
+    def ensure_column_exists(self, table: str, column: str, datatype: str) -> None:
+        """
+        Add column to table if it doesn't exist (idempotent).
+
+        Implementation is database-specific due to varying SQL syntax.
+        Should log schema migration events when adding columns.
+        """
+        pass
+
     @staticmethod
     @abstractmethod
     def _db_exists(config: DatabaseConfig) -> bool:
