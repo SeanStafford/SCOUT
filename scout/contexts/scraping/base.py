@@ -274,6 +274,10 @@ class JobListingScraper(ABC):
             if len(listing_batch_df) > 0:
                 self.append_df_to_db(listing_batch_df)
 
+            # Lazy export: only write to disk when cache has changed
+            if self.cache_is_updated:
+                self._export_cache()
+
             # Check if we're done: completion when no pending URLs remain
             # (success + failed URLs are terminal states)
             if not scraped_urls:
@@ -282,10 +286,6 @@ class JobListingScraper(ABC):
                 if  not pending_urls:
                     self.listing_scraping_completed = True
                     break
-
-            # Lazy export: only write to disk when cache has changed
-            if self.cache_is_updated:
-                self._export_cache()
 
             # Be polite to the server
             time.sleep(self.batch_delay)
