@@ -392,20 +392,20 @@ class HTMLScraper(JobListingScraper):
         page_end = page_start + pages_per_batch
 
         scraped_urls = []
+        print("Jobs found by directory page: ", end="")
         for page in range(page_start, page_end):
             page_i_urls = self.scrape_urls_by_directory_page(page)
             n_urls_added = len(page_i_urls)
-            print(f"Found {n_urls_added} jobs on page {page} of directory.")
+            if page > page_start:
+                print(" "*30, end="")
+            print(f"{n_urls_added:-3} on page {page:-3}\n", end="")
             # Empty page indicates end of directory listing
             if not n_urls_added:
                 self.url_scraping_completed = True
                 break
-
             scraped_urls += page_i_urls
             time.sleep(self.request_delay)
 
-        if pages_per_batch > 1:
-            print(f"--------------------\nTotal URLs in this batch: {len(scraped_urls)}")
         self.current_directory_page = page + 1
         return scraped_urls
 
@@ -426,6 +426,12 @@ class HTMLScraper(JobListingScraper):
             new_urls,
             retry_failures=retry_failures
         )
+        if not self.url_scraping_completed:
+            batch_summary_printout = " "*30 + "-"*20 + "\n" + " "*30 
+            batch_summary_printout += f"{len(new_urls):-3} total | {len(urls_of_listings_to_fetch):-3} to fetch"
+            print(batch_summary_printout)
+        else:
+            print(f"✓ Directory scan complete.")
 
         # Export cache now if new URLs were assigned pending status
         if self.cache_is_updated:
@@ -436,7 +442,7 @@ class HTMLScraper(JobListingScraper):
         else:
             listings_df = pd.DataFrame()
 
-        print(f"Found {len(new_urls)} URLs, attempted to fetch {len(urls_of_listings_to_fetch)} of them, resulting in {len(listings_df)} listings to archive")
+        print(f"{len(urls_of_listings_to_fetch)} attempted fetches | {len(listings_df)} successful fetches | {len(urls_of_listings_to_fetch) - len(listings_df)} failed fetches")
         return new_urls, listings_df
 
 

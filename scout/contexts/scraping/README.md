@@ -59,6 +59,8 @@ python scripts/run_scrapers.py run ACMEScraper --batch-size 50 --start-page 0
 **Features:**
 - Timestamped logs in `outs/logs/scraping_*.txt`
 - Success/failure tracking with partial progress on errors
+- Exit codes for cron/automation (0=success, 1=failures)
+- Scraper kwargs support (e.g., `--start-page` for testing)
 
 ## Cache State Management
 
