@@ -6,10 +6,12 @@ Provides FilterPipeline class for consolidated filtering controlled by YAML conf
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Union
+
 import pandas as pd
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
-from pathlib import Path
+from omegaconf.dictconfig import DictConfig
 
 from scout.contexts.filtering.filters import (
     check_active,
@@ -17,9 +19,8 @@ from scout.contexts.filtering.filters import (
     check_column_red_flags,
 )
 
-
 load_dotenv()
-CONFIG_PATH = Path(os.getenv("CONFIG_PATH"))
+filter_config = Path(os.getenv("filter_config"))
 
 class FilterPipeline:
     """
@@ -30,15 +31,32 @@ class FilterPipeline:
     filtering (flexible, memory-side).
     """
 
-    def __init__(self, config_path: Path = CONFIG_PATH / "filters.yaml"):
+    def __init__(self, filter_config: Union[Path, str, DictConfig] = filter_config / "filters.yaml"):
         """
         Initialize pipeline with configuration.
 
         Args:
-            config_path: Path to YAML config file (relative to project root)
-        """
+            filter_config: Either a path to YAML config file or a DictConfig object.
 
-        self.config = OmegaConf.load(config_path)
+        Raises:
+            TypeError: If filter_config is not Path, str, or DictConfig
+
+        Examples:
+            >>> from scout.utils.config_helpers import merge_configs
+            >>> config = merge_configs(["config/default.yaml", "config/test.yaml"])
+            >>> pipeline = FilterPipeline(config)
+
+            >>> # Altertnative simpler usage
+            >>> pipeline = FilterPipeline("config/default.yaml")
+        """
+        if isinstance(filter_config, (Path, str)):
+            self.config = OmegaConf.load(filter_config)
+        elif isinstance(filter_config, DictConfig):
+            self.config = filter_config
+        else:
+            raise TypeError(
+                f"filter_config must be Path, str, or DictConfig, got {type(filter_config)}"
+            )
 
     def build_sql_query(self, table_name: str = "listings") -> str:
         """
