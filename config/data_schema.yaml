@@ -1,4 +1,11 @@
 # SCOUT Canonical Data Schema
+#
+# Defines the standard fields that all scrapers should provide.
+#
+# Architecture Notes:
+# - Scrapers own their data transformation and mapping to these canonical fields
+# - Storage context defines and enforces this schema
+# - Filtering context consumes data using these canonical field names
 
 canonical_schema:
   # ============================================================================
