@@ -4,8 +4,16 @@ General utility functions for SCOUT.
 Contains helper functions used across different modules.
 """
 
+import os
+from pathlib import Path
+from typing import Union
+
+from dotenv import load_dotenv
 import collections.abc
 
+# Load environment variables
+load_dotenv()
+PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", "."))
 
 def flatten_dict(
     d_in,
@@ -67,3 +75,14 @@ def flatten_dict(
             else:
                 d_out[hierarchical_key_i] = v
     return d_out
+
+
+def relative_to_project(path: Union[str, Path]) -> str:
+    path = str(Path(path))
+    proj_root_str = str(PROJECT_ROOT)
+
+    if proj_root_str.endswith("/"):
+        proj_root_str = proj_root_str[:-1]
+
+    # Remove project root part of path to make it relative
+    return path.replace(proj_root_str + "/", "")

@@ -21,7 +21,6 @@ from scout.contexts.storage.getter import (
 from scout.contexts.storage.maintenance import (
     process_status_events,
     process_status_events_for_database,
-    process_inactive_events,  # Deprecated
 )
 
 __all__ = [
@@ -36,7 +35,6 @@ __all__ = [
     # Maintenance workers (event consumers)
     "process_status_events",
     "process_status_events_for_database",
-    "process_inactive_events",  # Deprecated
 ]
 
 
