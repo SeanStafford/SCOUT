@@ -20,7 +20,7 @@ from scout.contexts.filtering.filters import (
 )
 
 load_dotenv()
-filter_config = Path(os.getenv("filter_config"))
+CONFIG_PATH = Path(os.getenv("CONFIG_PATH"))
 
 class FilterPipeline:
     """
@@ -31,7 +31,7 @@ class FilterPipeline:
     filtering (flexible, memory-side).
     """
 
-    def __init__(self, filter_config: Union[Path, str, DictConfig] = filter_config / "filters.yaml"):
+    def __init__(self, filter_config: Union[Path, str, DictConfig] = CONFIG_PATH / "filters.yaml"):
         """
         Initialize pipeline with configuration.
 
