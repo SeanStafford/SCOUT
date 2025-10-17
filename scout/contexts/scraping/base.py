@@ -268,29 +268,41 @@ class JobListingScraper(ABC):
             retry_failures: If True, retry previously failed URLs; if False, skip them
             listing_batch_size: Max number of detail listings to scrape per iteration (default: all pending)
         """
-        while not self.listing_scraping_completed:
-            # Fetch next batch
-            scraped_urls, listing_batch_df = self.fetch_next_batch(batch_size, retry_failures=retry_failures)
+        try:
+            while not self.listing_scraping_completed:
+                # Fetch next batch
+                scraped_urls, listing_batch_df = self.fetch_next_batch(
+                    batch_size,
+                    retry_failures=retry_failures,
+                    listing_batch_size=listing_batch_size
+                )
 
-            # Archive new listings
-            if len(listing_batch_df) > 0:
-                self.append_df_to_db(listing_batch_df)
+                # Archive new listings
+                if len(listing_batch_df) > 0:
+                    self.append_df_to_db(listing_batch_df)
 
-            # Lazy export: only write to disk when cache has changed
+                # Lazy export: only write to disk when cache has changed
+                if self.cache_is_updated:
+                    self._export_cache()
+
+                # Check if we're done: completion when no pending URLs remain
+                # (success + failed URLs are terminal states)
+                if not scraped_urls:
+                    pending_urls = self._filter_cached_urls_by_status(TEMP_STATUS)
+
+                    if not pending_urls:
+                        self.listing_scraping_completed = True
+                        break
+
+                # Be polite to the server
+                time.sleep(self.batch_delay)
+
+        except KeyboardInterrupt:
+            print("\n\nInterrupted by user - saving progress...")
             if self.cache_is_updated:
                 self._export_cache()
-
-            # Check if we're done: completion when no pending URLs remain
-            # (success + failed URLs are terminal states)
-            if not scraped_urls:
-                pending_urls = [url for url, data in self.cache.items() if data["status"] == TEMP_STATUS]
-
-                if  not pending_urls:
-                    self.listing_scraping_completed = True
-                    break
-
-            # Be polite to the server
-            time.sleep(self.batch_delay)
+                print(f"✓ Cache exported to {self.cache_path}")
+            raise  # Re-raise so orchestration layer can handle cleanup
 
 
 class HTMLScraper(JobListingScraper):
@@ -337,49 +349,55 @@ class HTMLScraper(JobListingScraper):
         temp_cache = {}
         scraped_info_list = []
 
-        for listing_url in tqdm(urls):
-            try:
-                fetched_listing_webpage = html_request_with_retry(
-                    url=listing_url,
-                    delay=self.request_delay,
-                    max_attempts=self.max_retries,
-                )
-                # Detect redirects (usually indicates removed/expired listings)
-                assert fetched_listing_webpage.url == listing_url, (
-                    f"{listing_url} redirected to {fetched_listing_webpage.url} likely because the listing is no longer available"
-                )
+        try:
+            for listing_url in tqdm(urls):
+                response, classification, error_msg = self.fetcher.fetch(listing_url)
 
-                scraped_info = self.parse_listing_webpage(
-                    url=listing_url, html_response=fetched_listing_webpage
-                )
+                if classification == LINK_GOOD:
+                    scraped_info = self.parse_listing_webpage(
+                        url=listing_url, html_response=response
+                    )
 
-                # Set initial status and timestamp (if columns exist in df2db_col_map)
-                scraped_info["Status"] = "active"
-                scraped_info["Last Checked"] = datetime.now()
+                    # Set initial status and timestamp (if columns exist in df2db_col_map)
+                    scraped_info["Status"] = "active"
+                    scraped_info["Last Checked"] = datetime.now()
 
-                scraped_info_list.append(scraped_info)
+                    scraped_info_list.append(scraped_info)
 
-                # Mark as successful in cache
-                temp_cache[listing_url] = {
-                    "status": SUCCESS_STATUS,
-                    "last_attempt": datetime.now().isoformat(),
-                    "attempts": self.cache[listing_url]["attempts"] + 1
-                }
+                    # Mark as successful in cache
+                    temp_cache[listing_url] = {
+                        "status": SUCCESS_STATUS,
+                        "last_attempt": datetime.now().isoformat(),
+                        "attempts": self.cache[listing_url]["attempts"] + 1
+                    }
+
+                elif classification == LINK_BAD:
+                    print(
+                        f"Permanent failure for {listing_url}: {error_msg or 'Unknown error'}"
+                    )
+                    temp_cache[listing_url] = {
+                        "status": FAILURE_STATUS,
+                        "last_attempt": datetime.now().isoformat(),
+                        "attempts": self.cache[listing_url]["attempts"] + 1,
+                        "error": error_msg or "Permanent failure"
+                    }
+
+                else:  # LINK_UNKNOWN (transient failure)
+                    print(f"Transient failure for {listing_url}: {error_msg or 'Unknown error'}")
+                    temp_cache[listing_url] = {
+                        "status": TEMP_FAILURE_STATUS,
+                        "last_attempt": datetime.now().isoformat(),
+                        "attempts": self.cache[listing_url]["attempts"] + 1,
+                        "error": error_msg or "Transient failure"
+                    }
 
                 time.sleep(self.request_delay)
 
-            except Exception as e:
-                print(
-                    f"Failed to scrape {listing_url} after {self.max_retries} attempts: {e}"
-                )
-
-                # Mark as failed in cache
-                temp_cache[listing_url] = {
-                    "status": FAILURE_STATUS,
-                    "last_attempt": datetime.now().isoformat(),
-                    "attempts": self.cache[listing_url]["attempts"] + 1,
-                    "error": str(e)
-                }
+        except KeyboardInterrupt:
+            # Save partial progress before re-raising
+            if temp_cache:
+                self._update_cache(temp_cache)
+            raise  # Re-raise to bubble up
 
         # Batch update cache after all scraping attempts (reduces I/O)
         self._update_cache(temp_cache)
