@@ -450,15 +450,18 @@ class HTMLScraper(JobListingScraper):
         Phase 1 (directory scraping) is skipped to finish pending work first.
         """
 
-        # Check if there are pending listings (not yet attempted this session)
+
+        # Phase 1: Get new URLs (skip if we have more pendings than listing_batch_size)
+        new_urls = []
         pending_urls = self._filter_cached_urls_by_status(TEMP_STATUS)
 
-        # Phase 1: Get new URLs (skip if we have pending work)
-        if not self.url_scraping_completed and not pending_urls:
-            new_urls = self.scrape_next_url_batch(pages_per_batch=batch_size)
+        if self.url_scraping_completed:
+            pass
         else:
-            new_urls = []
-            if pending_urls and not self.url_scraping_completed:
+            # Check if there are pending listings (not yet attempted this session)
+            if listing_batch_size is None or len(pending_urls) < listing_batch_size:
+                new_urls = self.scrape_next_url_batch(pages_per_batch=batch_size)
+            else:
                 print(f"Skipping directory scan - {len(pending_urls)} pending listings to process first")
 
         # Phase 2: Get unarchived URLs and fetch their details
