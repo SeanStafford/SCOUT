@@ -55,6 +55,13 @@ def run_command(
         help="Starting directory page number (default: 0)",
         min=0,
     ),
+    listing_batch_size: Optional[int] = typer.Option(
+        None,
+        "--listing-batch-size",
+        "-l",
+        help="Max listings to scrape per iteration (default: all pending)",
+        min=1,
+    ),
 ):
     """
     Run job scrapers with logging to timestamped files.
@@ -95,10 +102,14 @@ def run_command(
             typer.echo("\nUse 'list' command to see all available scrapers", err=True)
             raise typer.Exit(code=1)
 
-    # Build scraper kwargs if start_page specified
-    scraper_kwargs = None
+    # Build scraper kwargs for start_page and listing_batch_size
+    scraper_kwargs = {}
     if start_page is not None:
-        scraper_kwargs = {"current_directory_page": start_page}
+        scraper_kwargs["current_directory_page"] = start_page
+    if listing_batch_size is not None:
+        scraper_kwargs["listing_batch_size"] = listing_batch_size
+
+    scraper_kwargs = scraper_kwargs if scraper_kwargs else None
 
     # Run scrapers
     try:

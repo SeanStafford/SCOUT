@@ -133,6 +133,10 @@ def run_scraper(
         # Import and instantiate scraper
         scraper_class = _import_scraper_class(scraper_name)
         kwargs = scraper_kwargs or {}
+
+        # Extract listing_batch_size from kwargs (it's for propagate, not __init__)
+        listing_batch_size = kwargs.pop('listing_batch_size', None)
+
         scraper = scraper_class(**kwargs)
 
         # Get initial row count
@@ -140,7 +144,11 @@ def run_scraper(
         initial_rows = len(initial_df)
 
         # Run scraper (may return None or DataFrame)
-        scraper.propagate(batch_size=batch_size, retry_failures=retry_failures)
+        scraper.propagate(
+            batch_size=batch_size,
+            retry_failures=retry_failures,
+            listing_batch_size=listing_batch_size
+        )
 
         # Get final row count from database
         final_df = scraper.import_db_as_df()

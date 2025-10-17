@@ -237,22 +237,28 @@ class JobListingScraper(ABC):
                 if data["status"] in STATUS_LIST_TO_FETCH]
 
     @abstractmethod
-    def fetch_next_batch(self, batch_size: int, retry_failures: bool) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures: bool, listing_batch_size: int = None) -> tuple[list, pd.DataFrame]:
         """
         Fetch next batch of listings.
+
+        Args:
+            batch_size: Number of directory pages to process
+            retry_failures: Whether to retry failed URLs
+            listing_batch_size: Max listings to scrape per iteration
 
         Returns: (list of URLs, DataFrame of listings to archive)
         """
         pass
 
-    def propagate(self, batch_size: int = 10, retry_failures: bool = False) -> pd.DataFrame:
+    def propagate(self, batch_size: int = 10, retry_failures: bool = False, listing_batch_size: int = None) -> pd.DataFrame:
         """
         Common orchestration logic for all scrapers.
         Fetches batches until all listings are scraped.
 
         Args:
-            batch_size: Number of listings to scrape per batch
+            batch_size: Number of directory pages to scrape per batch
             retry_failures: If True, retry previously failed URLs; if False, skip them
+            listing_batch_size: Max number of detail listings to scrape per iteration (default: all pending)
         """
         while not self.listing_scraping_completed:
             # Fetch next batch
@@ -402,7 +408,7 @@ class HTMLScraper(JobListingScraper):
         self.current_directory_page = page + 1
         return scraped_urls
 
-    def fetch_next_batch(self, batch_size: int, retry_failures: bool = False) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures: bool = False, listing_batch_size: int = None) -> tuple[list, pd.DataFrame]:
         """
         Implementation of abstract method for HTML scraping.
         Two-phase: first get URLs, then fetch details for unarchived ones.
@@ -419,11 +425,17 @@ class HTMLScraper(JobListingScraper):
             new_urls,
             retry_failures=retry_failures
         )
-        if not self.url_scraping_completed:
-            batch_summary_printout = " "*30 + "-"*20 + "\n" + " "*30 
+
+        # Limit to listing_batch_size if specified
+        if listing_batch_size and len(urls_of_listings_to_fetch) > listing_batch_size:
+            urls_of_listings_to_fetch = urls_of_listings_to_fetch[:listing_batch_size]
+            print(f"Limiting batch to {listing_batch_size} listings (out of {len(pending_urls)} pending)")
+
+        if not self.url_scraping_completed and new_urls:
+            batch_summary_printout = " "*30 + "-"*20 + "\n" + " "*30
             batch_summary_printout += f"{len(new_urls):-3} total | {len(urls_of_listings_to_fetch):-3} to fetch"
             print(batch_summary_printout)
-        else:
+        elif self.url_scraping_completed and not pending_urls:
             print(f"✓ Directory scan complete.")
 
         # Export cache now if new URLs were assigned pending status
@@ -472,7 +484,7 @@ class APIScraper(JobListingScraper):
         """Fetch a batch of listings from the API."""
         pass
 
-    def fetch_next_batch(self, batch_size: int, retry_failures:bool = False) -> tuple[list, pd.DataFrame]:
+    def fetch_next_batch(self, batch_size: int, retry_failures: bool = False, listing_batch_size: int = None) -> tuple[list, pd.DataFrame]:
         """
         Implementation of abstract method for API scraping.
         Single-phase: API returns full listing data in one call.
