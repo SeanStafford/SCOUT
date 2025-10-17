@@ -102,21 +102,20 @@ def run_command(
             typer.echo("\nUse 'list' command to see all available scrapers", err=True)
             raise typer.Exit(code=1)
 
-    # Build scraper kwargs for start_page and listing_batch_size
-    scraper_kwargs = {}
+    # Build scraper kwargs (includes both propagate and init params)
+    scraper_kwargs = {
+        "batch_size": batch_size,
+        "retry_failures": retry_failures,
+    }
     if start_page is not None:
         scraper_kwargs["current_directory_page"] = start_page
     if listing_batch_size is not None:
         scraper_kwargs["listing_batch_size"] = listing_batch_size
 
-    scraper_kwargs = scraper_kwargs if scraper_kwargs else None
-
     # Run scrapers
     try:
         results = run_scrapers(
             scraper_names=scraper_names,
-            batch_size=batch_size,
-            retry_failures=retry_failures,
             verbose=not quiet,
             scraper_kwargs=scraper_kwargs,
         )

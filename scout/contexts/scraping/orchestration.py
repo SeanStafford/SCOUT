@@ -87,8 +87,6 @@ def _import_scraper_class(scraper_name: str) -> type:
 
 def run_scraper(
     scraper_name: str,
-    batch_size: int = 50,
-    retry_failures: bool = False,
     verbose: bool = True,
     scraper_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -97,11 +95,11 @@ def run_scraper(
 
     Args:
         scraper_name: Name of scraper class (e.g., "MomCorpScraper")
-        batch_size: Number of items per batch for propagate()
-        retry_failures: Whether to retry previously failed URLs
         verbose: Print progress information
-        scraper_kwargs: Additional keyword arguments to pass to scraper constructor
-                       (e.g., {"current_directory_page": 67})
+        scraper_kwargs: Keyword arguments for scraper initialization and propagation.
+                       Supports both __init__ params (e.g., "current_directory_page")
+                       and propagate() params (e.g., "batch_size", "retry_failures",
+                       "listing_batch_size")
 
     Returns:
         Dict with keys:
@@ -126,29 +124,35 @@ def run_scraper(
     scraper = None
 
     try:
+        kwargs = scraper_kwargs or {}
+
+        # Extract propagate() parameters with defaults
+        batch_size = kwargs.get('batch_size', 50)
+        retry_failures = kwargs.get('retry_failures', False)
+
         logger.info(
             f"[{scraper_name}] Starting (batch_size={batch_size}, retry_failures={retry_failures})"
         )
 
         # Import and instantiate scraper
         scraper_class = _import_scraper_class(scraper_name)
-        kwargs = scraper_kwargs or {}
 
-        # Extract listing_batch_size from kwargs (it's for propagate, not __init__)
-        listing_batch_size = kwargs.pop('listing_batch_size', None)
+        # Separate kwargs for __init__ vs propagate()
+        propagate_kwargs = {
+            'batch_size': batch_size,
+            'retry_failures': retry_failures,
+            'listing_batch_size': kwargs.get('listing_batch_size', None)
+        }
+        init_kwargs = {k: v for k, v in kwargs.items() if k not in propagate_kwargs}
 
-        scraper = scraper_class(**kwargs)
+        scraper = scraper_class(**init_kwargs)
 
         # Get initial row count
         initial_df = scraper.import_db_as_df()
         initial_rows = len(initial_df)
 
         # Run scraper (may return None or DataFrame)
-        scraper.propagate(
-            batch_size=batch_size,
-            retry_failures=retry_failures,
-            listing_batch_size=listing_batch_size
-        )
+        scraper.propagate(**propagate_kwargs)
 
         # Get final row count from database
         final_df = scraper.import_db_as_df()
@@ -214,8 +218,6 @@ def run_scraper(
 
 def run_scrapers(
     scraper_names: str | list[str] | None = None,
-    batch_size: int = 50,
-    retry_failures: bool = False,
     verbose: bool = True,
     log_dir: Path = LOGS_PATH,
     scraper_kwargs: dict[str, Any] | None = None,
@@ -228,12 +230,12 @@ def run_scrapers(
                       - str: single scraper (e.g., "MomCorpScraper")
                       - list[str]: multiple scrapers
                       - None: run all available scrapers
-        batch_size: Number of items per batch for propagate() (default: 50)
-        retry_failures: Whether to retry previously failed URLs (default: False)
         verbose: Print progress information (default: True)
         log_dir: Directory for log files (default: LOGS_PATH)
-        scraper_kwargs: Additional keyword arguments to pass to scraper constructor
-                       (e.g., {"current_directory_page": 67})
+        scraper_kwargs: Keyword arguments for scraper initialization and propagation.
+                       Supports both __init__ params (e.g., "current_directory_page")
+                       and propagate() params (e.g., "batch_size", "retry_failures",
+                       "listing_batch_size"). Defaults: batch_size=50, retry_failures=False
 
     Returns:
         Dict mapping scraper_name → result dict with keys:
@@ -244,14 +246,30 @@ def run_scrapers(
             - error: Error message (if failed)
 
     Example:
-        # Run all scrapers
+        # Run all scrapers (with defaults)
         results = run_scrapers()
 
-        # Run specific scrapers
-        results = run_scrapers(["MomCorpScraper", "ACMEScraper"], batch_size=100)
+        # Run specific scrapers with custom batch size
+        results = run_scrapers(
+            ["MomCorpScraper", "ACMEScraper"],
+            scraper_kwargs={"batch_size": 100}
+        )
 
         # Run single scraper starting from page 67
-        results = run_scrapers("MomCorpScraper", scraper_kwargs={"current_directory_page": 67})
+        results = run_scrapers(
+            "MomCorpScraper",
+            scraper_kwargs={"current_directory_page": 67}
+        )
+
+        # Run with all options
+        results = run_scrapers(
+            scraper_kwargs={
+                "batch_size": 100,
+                "retry_failures": True,
+                "listing_batch_size": 50,
+                "current_directory_page": 10
+            }
+        )
     """
     # Setup logging
     log_file = _setup_logger(log_dir)
@@ -280,8 +298,6 @@ def run_scrapers(
     for scraper_name in scraper_names:
         result = run_scraper(
             scraper_name=scraper_name,
-            batch_size=batch_size,
-            retry_failures=retry_failures,
             verbose=verbose,
             scraper_kwargs=scraper_kwargs,
         )

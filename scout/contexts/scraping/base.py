@@ -471,7 +471,7 @@ class HTMLScraper(JobListingScraper):
         )
 
         # Limit to listing_batch_size if specified
-        if listing_batch_size and len(urls_of_listings_to_fetch) > listing_batch_size:
+        if listing_batch_size is not None and len(urls_of_listings_to_fetch) > listing_batch_size:
             urls_of_listings_to_fetch = urls_of_listings_to_fetch[:listing_batch_size]
             print(f"Limiting batch to {listing_batch_size} listings (out of {len(pending_urls)} pending)")
 
