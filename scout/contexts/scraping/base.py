@@ -11,6 +11,7 @@ import os
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
@@ -18,11 +19,16 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from sqlalchemy import create_engine
 from typing import List, Dict, Tuple
+from omegaconf import OmegaConf
+from dotenv import load_dotenv
 
 from scout.contexts.storage import (
     get_database_wrapper,
     DatabaseConfig,
 )
+
+load_dotenv()
+CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "config"))
 
 # Cache status constants defining the URL lifecycle:
 # TEMP_STATUS: URL discovered but not yet scraped
@@ -60,25 +66,24 @@ class JobListingScraper(ABC):
         cache_path=None,
         database_name=None,
         url_column_name="url",
-        request_delay=1.0,
-        batch_delay=2.0,
-        max_retries=2,
-        max_consecutive_failures=5,
+        fetch_config=None,
         db_config=None,
     ):
         self.db_config = db_config or DatabaseConfig.from_env(name=database_name)
 
-        self.batch_delay = batch_delay
-        self.request_delay = request_delay
-        self.max_consecutive_failures = max_consecutive_failures
+        # Load fetch config (use provided config or default from file)
+        if fetch_config is None:
+            fetch_config = OmegaConf.load(CONFIG_PATH / "fetch.yaml")
+        self.fetch_config = fetch_config
+
         self.url_col_name = url_column_name
         self.url_scraping_completed = False
         self.listing_scraping_completed = False
 
         self.fetcher = URLFetcher(
-            max_consecutive_failures=max_consecutive_failures,
-            request_delay=request_delay,
-            max_retries=max_retries,
+            max_consecutive_failures=self.fetch_config.max_consecutive_failures,
+            request_delay=self.fetch_config.request_delay,
+            max_retries=self.fetch_config.max_retries,
         )
 
         self.fields = list(df2db_col_map.keys())
@@ -295,7 +300,7 @@ class JobListingScraper(ABC):
                         break
 
                 # Be polite to the server
-                time.sleep(self.batch_delay)
+                time.sleep(self.fetch_config.batch_delay)
 
         except KeyboardInterrupt:
             print("\n\nInterrupted by user - saving progress...")
@@ -320,6 +325,7 @@ class HTMLScraper(JobListingScraper):
         cache_path=None,
         database_name=None,
         current_directory_page=0,
+        fetch_config=None,
     ):
         self.current_directory_page = current_directory_page
 
@@ -327,6 +333,7 @@ class HTMLScraper(JobListingScraper):
             df2db_col_map=df2db_col_map,
             cache_path=cache_path,
             database_name=database_name,
+            fetch_config=fetch_config,
         )
 
     @abstractmethod
@@ -391,7 +398,7 @@ class HTMLScraper(JobListingScraper):
                         "error": error_msg or "Transient failure"
                     }
 
-                time.sleep(self.request_delay)
+                time.sleep(self.fetch_config.request_delay)
 
         except KeyboardInterrupt:
             # Save partial progress before re-raising
@@ -429,7 +436,7 @@ class HTMLScraper(JobListingScraper):
                 self.url_scraping_completed = True
                 break
             scraped_urls += page_i_urls
-            time.sleep(self.request_delay)
+            time.sleep(self.fetch_config.request_delay)
 
         self.current_directory_page = page + 1
         return scraped_urls
