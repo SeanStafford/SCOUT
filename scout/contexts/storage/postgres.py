@@ -14,6 +14,7 @@ from typing import List, Tuple
 
 from scout.contexts.storage.database import DatabaseWrapper as BaseDBWrapper, DatabaseConfig
 from scout.contexts.storage.schema import SchemaInspector
+from scout.contexts.storage.events import log_schema_migration_event
 
 
 def postgres_connect(config: DatabaseConfig, name: str = None, host: str = None, user: str = None, port: int = None, password: str = None):
@@ -71,7 +72,9 @@ class PostgreSQLWrapper(BaseDBWrapper):
         Add column to table if it doesn't already exist (idempotent).
 
         Useful for schema migrations without dropping/recreating entire database.
-        Now logs schema migration events for audit trail and backfill tracking.
+        Logs schema migration events so we can track what needed to be backfilled.
+            - Adds column to database if it doesn't exist
+            - Logs schema migration event to outs/logs/schema_migrations.txt
 
         Args:
             table: Table name
@@ -80,14 +83,7 @@ class PostgreSQLWrapper(BaseDBWrapper):
 
         Example:
             >>> db.ensure_column_exists("listings", "status", "VARCHAR(20)")
-
-        Side Effects:
-            - Adds column to database if it doesn't exist
-            - Logs schema migration event to outs/logs/schema_migrations.txt
-            - Event includes count of existing rows (now have NULL in new column)
         """
-        from scout.contexts.storage.events import log_schema_migration_event
-
         conn = self.connect()
         cursor = conn.cursor()
 
