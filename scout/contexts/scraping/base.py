@@ -211,6 +211,15 @@ class JobListingScraper(ABC):
 
         return archived_urls
 
+    def _filter_cached_urls_by_status(self, statuses: list[str] | str) -> list[str]:
+        """
+        Filter cached URLs by status.
+        """
+        if isinstance(statuses, str):
+            statuses = [statuses]
+
+        return [url for url, data in self.cache.items() if data["status"] in statuses]
+
     def _pick_urls_to_archive(self, new_urls: list, retry_failures: bool = False) -> list:
         """
         Determine which URLs should be scraped in this batch.
@@ -233,8 +242,7 @@ class JobListingScraper(ABC):
             STATUS_LIST_TO_FETCH.append(FAILURE_STATUS)
         # Note: TEMP_FAILURE_STATUS is intentionally excluded (don't retry this session)
 
-        return [url for url, data in self.cache.items()
-                if data["status"] in STATUS_LIST_TO_FETCH]
+        return self._filter_cached_urls_by_status(STATUS_LIST_TO_FETCH)
 
     @abstractmethod
     def fetch_next_batch(self, batch_size: int, retry_failures: bool, listing_batch_size: int = None) -> tuple[list, pd.DataFrame]:
@@ -412,13 +420,21 @@ class HTMLScraper(JobListingScraper):
         """
         Implementation of abstract method for HTML scraping.
         Two-phase: first get URLs, then fetch details for unarchived ones.
+
+        If there are pending listings and listing_batch_size is set,
+        Phase 1 (directory scraping) is skipped to finish pending work first.
         """
 
-        # Phase 1: Get new URLs if we haven't finished scanning directory
-        if not self.url_scraping_completed:
+        # Check if there are pending listings (not yet attempted this session)
+        pending_urls = self._filter_cached_urls_by_status(TEMP_STATUS)
+
+        # Phase 1: Get new URLs (skip if we have pending work)
+        if not self.url_scraping_completed and not pending_urls:
             new_urls = self.scrape_next_url_batch(pages_per_batch=batch_size)
         else:
             new_urls = []
+            if pending_urls and not self.url_scraping_completed:
+                print(f"Skipping directory scan - {len(pending_urls)} pending listings to process first")
 
         # Phase 2: Get unarchived URLs and fetch their details
         urls_of_listings_to_fetch = self._pick_urls_to_archive(
