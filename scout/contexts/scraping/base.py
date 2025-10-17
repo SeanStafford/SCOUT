@@ -27,10 +27,12 @@ from scout.contexts.storage import (
 # Cache status constants defining the URL lifecycle:
 # TEMP_STATUS: URL discovered but not yet scraped
 # SUCCESS_STATUS: Successfully fetched and archived to database
-# FAILURE_STATUS: Failed after all retry attempts
+# FAILURE_STATUS: Failed after all retry attempts (permanent)
+# TEMP_FAILURE_STATUS: Failed this session (transient), don't retry until next session
 SUCCESS_STATUS = "success"
 FAILURE_STATUS = "failed"
 TEMP_STATUS = "pending"
+TEMP_FAILURE_STATUS = "temp_failure"
 
 from scout.contexts.scraping.requests import (
     URLFetcher,
@@ -61,16 +63,23 @@ class JobListingScraper(ABC):
         request_delay=1.0,
         batch_delay=2.0,
         max_retries=2,
+        max_consecutive_failures=5,
         db_config=None,
     ):
         self.db_config = db_config or DatabaseConfig.from_env(name=database_name)
 
         self.batch_delay = batch_delay
-        self.max_retries = max_retries
         self.request_delay = request_delay
+        self.max_consecutive_failures = max_consecutive_failures
         self.url_col_name = url_column_name
         self.url_scraping_completed = False
         self.listing_scraping_completed = False
+
+        self.fetcher = URLFetcher(
+            max_consecutive_failures=max_consecutive_failures,
+            request_delay=request_delay,
+            max_retries=max_retries,
+        )
 
         self.fields = list(df2db_col_map.keys())
         self.df2db_col_map = df2db_col_map
@@ -164,9 +173,21 @@ class JobListingScraper(ABC):
         self._update_cache({ url: data for url, data in cache_inferred_from_archive.items() if not (url in self.cache.keys() and self.cache[url]["status"] == SUCCESS_STATUS) })     
 
     def _export_cache(self):
-        """Write complete cache to JSON cache file with status."""
+        """
+        Write complete cache to JSON cache file with status.
+
+        Converts TEMP_FAILURE_STATUS to TEMP_STATUS on export so transient
+        failures are retried in next session.
+        """
+        cache_to_export = {}
+        for url, data in self.cache.items():
+            if data["status"] == TEMP_FAILURE_STATUS:
+                cache_to_export[url] = {**data, "status": TEMP_STATUS}
+            else:
+                cache_to_export[url] = data
+
         with open(self.cache_path, "w") as f:
-            json.dump(self.cache, f, indent=2)
+            json.dump(cache_to_export, f, indent=2)
         self.cache_is_updated = False
     
     def print_cache_summary(self):
@@ -196,6 +217,7 @@ class JobListingScraper(ABC):
 
         Assigns TEMP_STATUS to newly discovered URLs (eager status assignment).
         Returns all TEMP_STATUS URLs, plus FAILURE_STATUS if retry_failures=True.
+        Excludes TEMP_FAILURE_STATUS (already tried this session).
         This ensures every URL has a status before scraping attempts.
         """
         # Assign pending status to new URLs
@@ -209,6 +231,7 @@ class JobListingScraper(ABC):
         STATUS_LIST_TO_FETCH = [TEMP_STATUS]
         if retry_failures:
             STATUS_LIST_TO_FETCH.append(FAILURE_STATUS)
+        # Note: TEMP_FAILURE_STATUS is intentionally excluded (don't retry this session)
 
         return [url for url, data in self.cache.items()
                 if data["status"] in STATUS_LIST_TO_FETCH]
@@ -282,7 +305,12 @@ class HTMLScraper(JobListingScraper):
 
     @abstractmethod
     def scrape_urls_by_directory_page(self, page) -> list:
-        """Fetch job URLs from a single directory page."""
+        """
+        Fetch job URLs from a single directory page.
+
+        Implementations should use self.fetcher.fetch() for HTTP requests
+        to enable circuit breaking and consistent error handling.
+        """
         pass
 
     @abstractmethod
