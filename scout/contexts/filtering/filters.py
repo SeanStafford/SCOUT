@@ -5,18 +5,19 @@ Provides functions to filter job listings based on various criteria.
 
 import re
 import time
-import requests
 import pandas as pd
 
 from scout.utils.text_processing import check_keyword_between_delimiters
 from scout.contexts.filtering.events import log_status_event
+from scout.contexts.scraping.requests import URLFetcher, LINK_GOOD, LINK_BAD, LINK_UNKNOWN
 
 
 def check_active(
     df: pd.DataFrame,
     database_name: str,
     url_column: str = "url",
-    status_column: str = "Status"
+    status_column: str = "Status",
+    fetcher: URLFetcher = None
 ) -> pd.DataFrame:
     """
     Check if job listing URLs are still active and log status changes.
@@ -31,6 +32,7 @@ def check_active(
         database_name: Name of database these listings belong to (for event logging)
         url_column: Name of column containing URLs to check (default: "url")
         status_column: Name of column with current status (expected: "Status")
+        fetcher: URLFetcher instance to use (creates new one if None)
 
     Returns:
         DataFrame with new "Inactive" boolean column added
@@ -38,30 +40,27 @@ def check_active(
     inactives = []
     has_status_column = status_column in df.columns
 
+    if fetcher is None:
+        fetcher = URLFetcher(max_consecutive_failures=999, request_delay=0.5, max_retries=1)
+
     for _, row in df.iterrows():
         url = row[url_column]
 
         # If column doesn't exist, assumes a status of 'unknown'
         old_status = row[status_column] if has_status_column else 'unknown'
 
-        try:
-            resp = requests.get(url, timeout=10)
+        _, classification, _ = fetcher.fetch(url)
 
-            # Check for link-level issues that indicate the listing is inactive
-            # e.g. 404 meants the link doesn't exist
-            if 400 <= resp.status_code < 500 or url != resp.url:
-                new_status = 'inactive'
-            elif 200 <= resp.status_code < 300:
-                new_status = 'active'
-            else:
-                new_status = 'unknown'               
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.RequestException):
-            # Network-level issues or ambiguous issues
+        if classification == LINK_GOOD:
+            new_status = 'active'
+        elif classification == LINK_BAD:
+            new_status = 'inactive'
+        else:  # LINK_UNKNOWN
             new_status = 'unknown'
 
         if new_status != old_status:
             log_status_event(url, old_status, new_status, database_name)
-        
+
         inactive_status_bool_map = {"active": False, "inactive": True, "unknown": None}
         inactives.append(inactive_status_bool_map[new_status])
 

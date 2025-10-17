@@ -18,6 +18,7 @@ from scout.contexts.filtering.filters import (
     check_clearance_req,
     check_column_red_flags,
 )
+from scout.contexts.scraping.requests import URLFetcher
 
 load_dotenv()
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH"))
@@ -57,6 +58,8 @@ class FilterPipeline:
             raise TypeError(
                 f"filter_config must be Path, str, or DictConfig, got {type(filter_config)}"
             )
+
+        self.fetcher = URLFetcher(max_consecutive_failures=50, request_delay=0.5, max_retries=1)
 
     def build_sql_query(self, table_name: str = "listings") -> str:
         """
@@ -117,12 +120,13 @@ class FilterPipeline:
 
         return query
 
-    def apply_filters(self, df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    def apply_filters(self, df: pd.DataFrame, database_name: str = None, verbose: bool = True) -> pd.DataFrame:
         """
         Apply all configured filters to DataFrame sequentially.
 
         Args:
             df: DataFrame to filter
+            database_name: Name of database for event logging (required if active_check enabled)
             verbose: If True, print progress after each filter step
 
         Returns:
@@ -188,7 +192,15 @@ class FilterPipeline:
         # Active URL check (slow, optional)
         active_config = self.config.active_check
         if active_config.enabled:
-            df = check_active(df, url_column=active_config.url_column)
+            if database_name is None:
+                raise ValueError("database_name is required when active_check is enabled")
+
+            df = check_active(
+                df,
+                database_name=database_name,
+                url_column=active_config.url_column,
+                fetcher=self.fetcher
+            )
             df = df[~df["Inactive"]]
 
             if verbose:

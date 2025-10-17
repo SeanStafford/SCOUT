@@ -10,7 +10,6 @@ This module defines the abstract base classes and common functionality for all j
 import os
 import json
 import time
-import requests
 from datetime import datetime
 
 import pandas as pd
@@ -33,47 +32,13 @@ SUCCESS_STATUS = "success"
 FAILURE_STATUS = "failed"
 TEMP_STATUS = "pending"
 
-
-def html_request_with_retry(url, method="GET", max_attempts=3, delay=1.0, **kwargs):
-    """
-    Make an HTTP request with automatic retry on failure.
-
-    Args:
-        url (str): The URL to request
-        method (str): HTTP method - either 'GET' or 'POST' (default: 'GET')
-        max_attempts (int): How many times to try the request (default: 3)
-        delay (float): Initial delay in seconds between retries (default: 1.0)
-        **kwargs: Any additional arguments to pass to requests.get() or requests.post()
-
-    Returns:
-        requests.Response: The response object from successful request
-
-    Raises:
-        requests.RequestException: If all retry attempts fail
-    """
-    most_recent_exception = None
-
-    for attempt in range(max_attempts):
-        try:
-            if method == "GET":
-                response = requests.get(url, **kwargs)
-                response.raise_for_status()
-                return response
-            elif method == "POST":
-                response = requests.post(url, **kwargs)
-                response.raise_for_status()
-                return response
-
-        except requests.RequestException as e:
-            most_recent_exception = e
-
-            if attempt < max_attempts - 1:
-                # Exponential backoff: delay * (2^attempt)
-                wait_time = delay * (2**attempt)
-                print(f"Request failed, retrying in {wait_time}s...")
-                time.sleep(wait_time)
-
-    raise most_recent_exception
+from scout.contexts.scraping.requests import (
+    URLFetcher,
+    NetworkCircuitBreakerException,
+    LINK_GOOD,
+    LINK_BAD,
+    LINK_UNKNOWN,
+)
 
 
 class JobListingScraper(ABC):
