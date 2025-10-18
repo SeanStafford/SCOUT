@@ -290,12 +290,14 @@ class JobListingScraper(ABC):
                 if self.cache_is_updated:
                     self._export_cache()
 
-                # Check if we're done: completion when no pending URLs remain
-                # (success + failed URLs are terminal states)
+                # Check if we're done: completion when no queue remain
+                # Must check same statuses as _pick_urls_to_archive() to avoid early exit
                 if not scraped_urls:
-                    pending_urls = self._filter_cached_urls_by_status(TEMP_STATUS)
+                    url_queue = self._filter_cached_urls_by_status(TEMP_STATUS)
+                    # Clever trick: retry_failures is bool (0 or 1), so this adds failed URLs only when retry_failures=True
+                    url_queue += retry_failures * self._filter_cached_urls_by_status(FAILURE_STATUS)
 
-                    if not pending_urls:
+                    if not url_queue:
                         self.listing_scraping_completed = True
                         break
 
@@ -451,18 +453,19 @@ class HTMLScraper(JobListingScraper):
         """
 
 
-        # Phase 1: Get new URLs (skip if we have more pendings than listing_batch_size)
+        # Phase 1: Get new URLs (skip if we have a backlog larger than listing_batch_size)
         new_urls = []
-        pending_urls = self._filter_cached_urls_by_status(TEMP_STATUS)
+        url_backlog = self._filter_cached_urls_by_status(TEMP_STATUS)
+        url_backlog += retry_failures * self._filter_cached_urls_by_status(FAILURE_STATUS)
 
         if self.url_scraping_completed:
             pass
         else:
-            # Check if there are pending listings (not yet attempted this session)
-            if listing_batch_size is None or len(pending_urls) < listing_batch_size:
+            # Check if there is a listings backlog (not yet attempted this session)
+            if listing_batch_size is None or len(url_backlog) < listing_batch_size:
                 new_urls = self.scrape_next_url_batch(pages_per_batch=batch_size)
             else:
-                print(f"Skipping directory scan - {len(pending_urls)} pending listings to process first")
+                print(f"Skipping directory scan - backlog of {len(url_backlog)} listings to process first")
 
         # Phase 2: Get unarchived URLs and fetch their details
         urls_of_listings_to_fetch = self._pick_urls_to_archive(
@@ -471,15 +474,15 @@ class HTMLScraper(JobListingScraper):
         )
 
         # Limit to listing_batch_size if specified
-        if listing_batch_size is not None and len(urls_of_listings_to_fetch) > listing_batch_size:
+        if listing_batch_size is not None and len(urls_of_listings_to_fetch) >= 2* listing_batch_size:
             urls_of_listings_to_fetch = urls_of_listings_to_fetch[:listing_batch_size]
-            print(f"Limiting batch to {listing_batch_size} listings (out of {len(pending_urls)} pending)")
+            print(f"Limiting batch to {listing_batch_size} listings (out of a backlog of {len(url_backlog)})")
 
         if not self.url_scraping_completed and new_urls:
             batch_summary_printout = " "*30 + "-"*20 + "\n" + " "*30
             batch_summary_printout += f"{len(new_urls):-3} total | {len(urls_of_listings_to_fetch):-3} to fetch"
             print(batch_summary_printout)
-        elif self.url_scraping_completed and not pending_urls:
+        elif self.url_scraping_completed and not url_backlog:
             print(f"✓ Directory scan complete.")
 
         # Export cache now if new URLs were assigned pending status
