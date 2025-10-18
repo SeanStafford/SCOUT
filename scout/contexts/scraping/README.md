@@ -39,12 +39,14 @@ JobListingScraper (Abstract)
 ## Key Features
 
 - **Resume capability**: Scraping continues from last checkpoint after interruption
-- **State tracking**: Every URL has explicit status (pending/success/failed)
-- **Error handling**: Automatic retries with exponential backoff
-- **Rate limiting**: Configurable delays between requests
+- **State tracking**: Every URL has explicit status (pending/success/failed/transient failure)
+- **Error handling**: Automatic retries with exponential backoff and circuit breaker
+- **Rate limiting**: Configurable delays via YAML (`config/scraping_params.yaml`)
 - **Deduplication**: Set-based operations prevent duplicate entries
 - **Archive-as-authority**: Database truth overwrites stale cache entries
-- **scraper orchestration**: Automated scraper execution with logging
+- **Scraper orchestration**: Automated scraper execution with logging
+- **Graceful shutdown**: KeyboardInterrupt (Ctrl+C) saves progress before exiting
+- **Centralized HTTP handling**: URLFetcher with transient/permanent failure classification
 
 ## Scraper Orchestration
 
@@ -53,14 +55,15 @@ JobListingScraper (Abstract)
 make scrape
 
 # Run specific scrapers with options
-python scripts/run_scrapers.py run ACMEScraper --batch-size 50 --start-page 0
+python scripts/run_scrapers.py run ACMEScraper --batch-size 50 --listing-batch-size 100
 ```
 
 **Features:**
 - Timestamped logs in `outs/logs/scraping_*.txt`
 - Success/failure tracking with partial progress on errors
 - Exit codes for cron/automation (0=success, 1=failures)
-- Scraper kwargs support (e.g., `--start-page` for testing)
+- Supports both `__init__` params and `propagate()` params via unified `scraper_kwargs`
+- `listing_batch_size` parameter limits listings scraped per iteration (useful for testing/backlog processing)
 
 ## Cache State Management
 
@@ -71,8 +74,10 @@ TEMP_STATUS ("pending")
     ↓
   scrape attempt
     ↓
-SUCCESS_STATUS ("success")  or  FAILURE_STATUS ("failed")
+SUCCESS_STATUS ("success")  or  FAILURE_STATUS ("failed")  or  TEMP_FAILURE_STATUS (transient, not exported)
 ```
+
+**TEMP_FAILURE_STATUS**: Transient failures (e.g., 429 Too Many Requests, 503 Service Unavailable) are marked as temporary failures and skipped for the current session. These are never exported to cache and refresh each session, allowing automatic retry on the next run.
 
 ### Cache File Format (JSON)
 
@@ -133,5 +138,56 @@ parse_listing_webpage(url, html_response) -> dict
 - Efficiently discover all listings first
 - Selectively fetch only unarchived details
 - Resume mid-scrape without re-discovering URLs
+
+## HTTP Request Handling
+
+### URLFetcher (`requests.py`)
+
+Centralized HTTP handling with intelligent failure classification:
+
+**Failure Classification:**
+- **Permanent failures**: 401, 403, 404, 410, invalid URLs, redirect loops → marked as "failed"
+- **Transient failures**: 408, 429, 500-504, timeouts → marked as "transient failure"
+- **Circuit breaker**: Stops scraping after consecutive transient failures to respect rate limits
+
+**Usage:**
+```python
+from scout.contexts.scraping.requests import URLFetcher
+
+fetcher = URLFetcher(max_consecutive_transient_failures=5)
+response = fetcher.fetch(url)
+# Returns None on transient failure, response object on success
+```
+
+### Rate Limiting Configuration
+
+Request timing parameters are configured via YAML (`config/scraping_params.yaml`):
+```yaml
+timing:
+  request_delay: 1.0    # Seconds between individual requests
+  batch_delay: 2.0      # Seconds between batches
+  max_retries: 2        # Maximum retry attempts
+```
+
+This centralizes timing configuration, making it easy to adjust rate limiting without changing code.
+
+## Graceful Shutdown
+
+Scrapers handle KeyboardInterrupt (Ctrl+C) gracefully:
+- Exports cache immediately to preserve progress
+- Completes current batch before exiting
+- Allows incremental backlog processing
+
+**Example workflow:**
+```bash
+# Start scraping large backlog
+python scripts/run_scrapers.py run ACMEScraper
+
+# Press Ctrl+C after partial progress
+^C  # Cache saved automatically
+
+# Resume later - picks up where it left off
+python scripts/run_scrapers.py run ACMEScraper
+```
 
 

@@ -64,7 +64,7 @@ query = pipeline.build_sql_query()
 df = scraper.import_db_as_df(query=query)
 
 # Pandas filtering (flexible, memory-side)
-df_filtered = pipeline.apply_filters(df, verbose=True)
+df_filtered = pipeline.apply_filters(df, database_name="ACME_Corp_job_listings", verbose=True)
 ```
 
 **Output:**

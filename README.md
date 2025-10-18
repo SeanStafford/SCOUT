@@ -183,8 +183,11 @@ This pattern respects **bounded context** principles: each context owns its doma
 
 Via orchestration (recommended - includes logging):
 ```bash
-make scrape                          # Run all scrapers
-python scripts/run_scrapers.py run BoozScraper  # Run specific scraper
+make scrape                                     # Run all scrapers
+python scripts/run_scrapers.py run ACMEScraper  # Run specific scraper
+
+# With parameters
+python scripts/run_scrapers.py run ACMEScraper --batch-size 50 --listing-batch-size 100
 ```
 
 Manually:
@@ -192,7 +195,7 @@ Manually:
 from scout.contexts.scraping.scrapers import ACMECorpScraper
 
 scraper = ACMECorpScraper()
-scraper.propagate(batch_size=10)
+scraper.propagate(batch_size=10, listing_batch_size=50)
 ```
 
 **3. Apply Filters** (notebook)
@@ -202,7 +205,7 @@ from scout.contexts.filtering import FilterPipeline
 pipeline = FilterPipeline("config/filters.yaml")
 query = pipeline.build_sql_query()
 df = scraper.import_db_as_df(query=query)
-df_filtered = pipeline.apply_filters(df)
+df_filtered = pipeline.apply_filters(df, database_name="ACME_Corp_job_listings")
 ```
 
 **4. Process Events** (maintenance)
