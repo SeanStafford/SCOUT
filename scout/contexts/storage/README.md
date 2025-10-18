@@ -265,3 +265,20 @@ draw_db_tree(tree_data, "my_database")
         ├── id
         └── name
 ```
+---
+
+## Technical Notes
+
+### Pandas + psycopg2 Warning Suppression
+
+The `export_df()` method in `PostgreSQLWrapper` uses raw psycopg2 connections with pandas, which triggers a deprecation warning recommending SQLAlchemy. **We intentionally suppress this warning** because:
+
+1. **SQLAlchemy has bugs**: Filtered queries with `WHERE` clauses fail with `immutabledict is not a sequence` error
+2. **psycopg2 is faster**: 16-20ms vs 40-50ms for simple queries
+3. **psycopg2 works reliably**: All query types work correctly, including complex filters
+
+**⚠️ Future Deprecation Risk**: Pandas may eventually drop support for raw DBAPI2 connections. Monitor pandas release notes and be prepared to:
+- Switch to SQLAlchemy if/when they fix the filtering bugs
+- Or implement our own DataFrame conversion from psycopg2 results
+
+**Investigation**: See [notebooks/debug_pandas_warning.ipynb](../../notebooks/debug_pandas_warning.ipynb) for detailed performance and compatibility testing.

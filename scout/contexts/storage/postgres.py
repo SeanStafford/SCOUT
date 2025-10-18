@@ -10,6 +10,7 @@ Provides PostgreSQL-specific utilities:
 import psycopg2
 from psycopg2 import sql
 import pandas as pd
+import warnings
 from typing import List, Tuple
 
 from scout.contexts.storage.database import DatabaseWrapper as BaseDBWrapper, DatabaseConfig
@@ -63,7 +64,15 @@ class PostgreSQLWrapper(BaseDBWrapper):
         """Execute a query and return results as a pandas DataFrame."""
         conn = self.connect()
         query = query if query is not None else "SELECT * from listings"
-        df = pd.read_sql_query(query, conn)
+
+        # Suppress pandas warning about using raw psycopg2 connection
+        # Note: pandas recommends SQLAlchemy, but it has bugs with filtered queries
+        # (see notebooks/debug_pandas_warning.ipynb for investigation)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='.*SQLAlchemy.*')
+            warnings.filterwarnings('ignore', message='.*DBAPI2.*')
+            df = pd.read_sql_query(query, conn)
+
         conn.close()
         return df
 
